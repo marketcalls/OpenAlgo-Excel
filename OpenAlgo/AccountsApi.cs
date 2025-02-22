@@ -76,7 +76,7 @@ namespace OpenAlgo
 
                     // ✅ Prepare Excel table with headers
                     object[,] resultArray = new object[orderCount + 1, columnCount]; // Only order rows + header row
-                    string[] headers = { "Action", "Exchange", "Order Status", "Order ID", "Price", "Price Type", "Product", "Quantity", "Symbol", "Timestamp", "Trigger Price" };
+                    string[] headers = { "Symbol", "Action", "Exchange", "Quantity", "Order Status", "Order ID", "Price", "Price Type", "Trigger Price", "Product", "Timestamp" };
 
                     // 🔹 Add headers to the first row
                     for (int col = 0; col < headers.Length; col++)
@@ -141,7 +141,7 @@ namespace OpenAlgo
 
                     // ✅ If no trades exist, return only the headers
                     object[,] resultArray = new object[Math.Max(tradeCount + 1, 1), columnCount];
-                    string[] headers = { "Action", "Avg Price", "Exchange", "Order ID", "Product", "Quantity", "Symbol", "Timestamp", "Trade Value" };
+                    string[] headers = { "Symbol", "Exchange", "Action", "Quantity", "Product", "Timestamp", "Trade Value", "Average Price", "Order ID" };
 
                     for (int col = 0; col < headers.Length; col++)
                         resultArray[0, col] = headers[col];
@@ -201,7 +201,7 @@ namespace OpenAlgo
 
                     // ✅ If no positions exist, return only the headers
                     object[,] resultArray = new object[Math.Max(positionCount + 1, 1), columnCount];
-                    string[] headers = { "Avg Price", "Exchange", "Product", "Quantity", "Symbol" };
+                    string[] headers = { "Symbol", "Exchange", "Quantity", "Product", "Average Price" };
 
                     for (int col = 0; col < headers.Length; col++)
                         resultArray[0, col] = headers[col];
@@ -219,6 +219,70 @@ namespace OpenAlgo
                         resultArray[i + 1, 3] = position["product"]?.ToString() ?? "";
                         resultArray[i + 1, 4] = position["average_price"]?.ToObject<double?>() ?? 0;
 
+                        
+                    }
+
+                    return resultArray;
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { "Error:", ex.Message } };
+                }
+            })!;
+        }
+
+
+        [ExcelFunction(Description = "Retrieve holdings from OpenAlgo API.")]
+        public static object[,] Holdings()
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/holdings";
+            var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(Holdings), new object[] { }, async () =>
+            {
+                try
+                {
+                    string json = await Utilities.PostRequestAsync(endpoint, payload);
+                    JObject jsonResponse = JObject.Parse(json);
+
+                    // ✅ Check if response contains "data" and "holdings"
+                    if (!jsonResponse.TryGetValue("data", out JToken? dataToken) || dataToken == null || dataToken.Type != JTokenType.Object)
+                        return new object[,] { { "Error: No holdings data available" } };
+
+                    JObject dataObject = (JObject)dataToken;
+                    if (!dataObject.TryGetValue("holdings", out JToken? holdingsToken) || holdingsToken == null || holdingsToken.Type != JTokenType.Array)
+                        return new object[,] { { "Error: No holdings found" } };
+
+                    JArray holdingsArray = (JArray)holdingsToken;
+                    int holdingsCount = holdingsArray.Count;
+                    int columnCount = 6; // Number of attributes
+
+                    // ✅ If no holdings exist, return only headers
+                    object[,] resultArray = new object[Math.Max(holdingsCount + 1, 1), columnCount];
+                    string[] headers = { "Symbol", "Exchange", "Quantity", "Product", "Pnl", "Pnl Percent" };
+
+                    for (int col = 0; col < headers.Length; col++)
+                        resultArray[0, col] = headers[col];
+
+                    if (holdingsCount == 0)
+                        return resultArray; // Return only headers if no holdings
+
+                    // 🔹 Add holdings data
+                    for (int i = 0; i < holdingsCount; i++)
+                    {
+                        JObject holding = (JObject)holdingsArray[i];
+
+                        resultArray[i + 1, 0] = holding["symbol"]?.ToString() ?? "";
+                        resultArray[i + 1, 1] = holding["exchange"]?.ToString() ?? "";
+                        resultArray[i + 1, 2] = holding["quantity"]?.ToObject<int?>() ?? 0;
+                        resultArray[i + 1, 3] = holding["product"]?.ToString() ?? "";
+                        resultArray[i + 1, 4] = holding["pnl"]?.ToObject<double?>() ?? 0;
+                        resultArray[i + 1, 5] = holding["pnlpercent"]?.ToObject<double?>() ?? 0;
+                        
+                        
                         
                     }
 
