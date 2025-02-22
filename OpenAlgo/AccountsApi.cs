@@ -40,7 +40,7 @@ namespace OpenAlgo
         /// <summary>
         /// Retrieves the OrderBook from OpenAlgo API.
         /// </summary>
-        [ExcelFunction(Description = "Retrieve the order book from OpenAlgo API.")]
+        [ExcelFunction(Name = "OrderBook", Description = "Retrieve the order book from OpenAlgo API.")]
         public static object[,] OrderBook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
@@ -116,7 +116,7 @@ namespace OpenAlgo
             })!;
         }
 
-        [ExcelFunction(Description = "Retrieve trade book from OpenAlgo API.")]
+        [ExcelFunction(Name = "TradeBook", Description = "Retrieves the trade book from OpenAlgo API.")]
         public static object[,] TradeBook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
@@ -176,7 +176,7 @@ namespace OpenAlgo
         }
 
 
-        [ExcelFunction(Description = "Retrieve position book from OpenAlgo API.")]
+        [ExcelFunction(Name = "PositionBook", Description = "Retrieves the position book from OpenAlgo API.")]
         public static object[,] PositionBook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
@@ -232,7 +232,7 @@ namespace OpenAlgo
         }
 
 
-        [ExcelFunction(Description = "Retrieve holdings from OpenAlgo API.")]
+        [ExcelFunction(Name = "Holdings", Description = "Retrieves holdings from OpenAlgo API.")]
         public static object[,] Holdings()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
