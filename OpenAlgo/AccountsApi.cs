@@ -116,6 +116,120 @@ namespace OpenAlgo
             })!;
         }
 
+        [ExcelFunction(Description = "Retrieve trade book from OpenAlgo API.")]
+        public static object[,] TradeBook()
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/tradebook";
+            var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(TradeBook), new object[] { }, async () =>
+            {
+                try
+                {
+                    string json = await Utilities.PostRequestAsync(endpoint, payload);
+                    JObject jsonResponse = JObject.Parse(json);
+
+                    if (!jsonResponse.TryGetValue("data", out JToken? dataToken) || dataToken == null || dataToken.Type != JTokenType.Array)
+                        return new object[,] { { "Error: No trade data available" } };
+
+                    JArray tradesArray = (JArray)dataToken;
+                    int tradeCount = tradesArray.Count;
+                    int columnCount = 9; // Number of trade attributes
+
+                    // ✅ If no trades exist, return only the headers
+                    object[,] resultArray = new object[Math.Max(tradeCount + 1, 1), columnCount];
+                    string[] headers = { "Action", "Avg Price", "Exchange", "Order ID", "Product", "Quantity", "Symbol", "Timestamp", "Trade Value" };
+
+                    for (int col = 0; col < headers.Length; col++)
+                        resultArray[0, col] = headers[col];
+
+                    if (tradeCount == 0)
+                        return resultArray; // Return only headers if no trades
+
+                    for (int i = 0; i < tradeCount; i++)
+                    {
+                        JObject trade = (JObject)tradesArray[i];
+
+                        resultArray[i + 1, 0] = trade["symbol"]?.ToString() ?? "";
+                        resultArray[i + 1, 1] = trade["exchange"]?.ToString() ?? "";
+                        resultArray[i + 1, 2] = trade["action"]?.ToString() ?? "";
+                        resultArray[i + 1, 3] = trade["quantity"]?.ToObject<int?>() ?? 0;
+                        resultArray[i + 1, 4] = trade["product"]?.ToString() ?? "";
+                        resultArray[i + 1, 5] = trade["timestamp"]?.ToString() ?? "";
+                        resultArray[i + 1, 6] = trade["trade_value"]?.ToObject<double?>() ?? 0;
+                        resultArray[i + 1, 7] = trade["average_price"]?.ToObject<double?>() ?? 0;
+                        resultArray[i + 1, 8] = trade["orderid"]?.ToString() ?? "";
+ 
+                        
+                    }
+
+                    return resultArray;
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { "Error:", ex.Message } };
+                }
+            })!;
+        }
+
+
+        [ExcelFunction(Description = "Retrieve position book from OpenAlgo API.")]
+        public static object[,] PositionBook()
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/positionbook";
+            var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(PositionBook), new object[] { }, async () =>
+            {
+                try
+                {
+                    string json = await Utilities.PostRequestAsync(endpoint, payload);
+                    JObject jsonResponse = JObject.Parse(json);
+
+                    if (!jsonResponse.TryGetValue("data", out JToken? dataToken) || dataToken == null || dataToken.Type != JTokenType.Array)
+                        return new object[,] { { "Error: No position data available" } };
+
+                    JArray positionsArray = (JArray)dataToken;
+                    int positionCount = positionsArray.Count;
+                    int columnCount = 5; // Number of position attributes
+
+                    // ✅ If no positions exist, return only the headers
+                    object[,] resultArray = new object[Math.Max(positionCount + 1, 1), columnCount];
+                    string[] headers = { "Avg Price", "Exchange", "Product", "Quantity", "Symbol" };
+
+                    for (int col = 0; col < headers.Length; col++)
+                        resultArray[0, col] = headers[col];
+
+                    if (positionCount == 0)
+                        return resultArray; // Return only headers if no positions
+
+                    for (int i = 0; i < positionCount; i++)
+                    {
+                        JObject position = (JObject)positionsArray[i];
+
+                        resultArray[i + 1, 0] = position["symbol"]?.ToString() ?? "";
+                        resultArray[i + 1, 1] = position["exchange"]?.ToString() ?? "";
+                        resultArray[i + 1, 2] = position["quantity"]?.ToObject<int?>() ?? 0;
+                        resultArray[i + 1, 3] = position["product"]?.ToString() ?? "";
+                        resultArray[i + 1, 4] = position["average_price"]?.ToObject<double?>() ?? 0;
+
+                        
+                    }
+
+                    return resultArray;
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { "Error:", ex.Message } };
+                }
+            })!;
+        }
 
 
     }
