@@ -1,0 +1,4 @@
+<DnaLibrary Name="OpenAlgo Add-In">
+  <!-- Reference your compiled DLL -->
+  <ExternalLibrary Path="OpenAlgo.dll" />
+</DnaLibrary>

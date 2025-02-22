@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="ExcelDna.AddIn" Version="1.8.0" />
+		<PackageReference Include="ExcelDna.Integration" Version="1.8.0" />
+		<PackageReference Include="ExcelDna.IntelliSense" Version="1.8.0" />
+		<PackageReference Include="ExcelDna.Registration" Version="1.8.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+</Project>
