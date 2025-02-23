@@ -154,5 +154,49 @@ namespace OpenAlgo
                 return resultArray;
             })!;
         }
+        [ExcelFunction(Name = "oa_intervals", Description = "Retrieves available time intervals.")]
+        public static object[,] oa_intervals()
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/intervals";
+            var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_intervals), new object[] { }, async () =>
+            {
+                string json = await Utilities.PostRequestAsync(endpoint, payload);
+                JObject jsonResponse = JObject.Parse(json);
+
+                if (!jsonResponse.TryGetValue("data", out JToken? dataToken) || dataToken == null)
+                    return new object[,] { { "Error: No interval data found" } };
+
+                JObject dataObject = (JObject)dataToken;
+                var categories = new[] { "Seconds", "Minutes", "Hours", "Days", "Weeks", "Months" };
+
+                // Calculate total number of rows required
+                int totalRows = categories.Sum(cat => (dataObject[cat.ToLower()] as JArray)?.Count ?? 0) + 1;
+                object[,] resultArray = new object[totalRows, 2];
+
+                // Headers
+                resultArray[0, 0] = "Category";
+                resultArray[0, 1] = "Interval";
+
+                int rowIndex = 1;
+                foreach (var category in categories)
+                {
+                    JArray intervalsArray = dataObject[category.ToLower()] as JArray ?? new JArray();
+                    foreach (var interval in intervalsArray)
+                    {
+                        resultArray[rowIndex, 0] = category;
+                        resultArray[rowIndex, 1] = interval.ToString();
+                        rowIndex++;
+                    }
+                }
+
+                return resultArray;
+            })!;
+        }
+
     }
 }
