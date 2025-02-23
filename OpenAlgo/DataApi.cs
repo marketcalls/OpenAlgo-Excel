@@ -15,7 +15,7 @@ namespace OpenAlgo
         public static object[,] oa_quotes(string symbol, string exchange)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/quotes";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey, ["symbol"] = symbol, ["exchange"] = exchange };

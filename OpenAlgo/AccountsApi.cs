@@ -10,7 +10,7 @@ namespace OpenAlgo
         public static object[,] oa_funds()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/funds";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
