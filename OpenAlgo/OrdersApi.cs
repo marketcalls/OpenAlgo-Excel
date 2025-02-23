@@ -580,5 +580,240 @@ namespace OpenAlgo
             })!;
         }
 
+        /// <summary>
+        /// Closes all open positions for a given strategy via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_closeposition",
+            Description = "Closes all open positions for a specified strategy through OpenAlgo API.")]
+        public static object[,] oa_closeposition(
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/closeposition";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["strategy"] = strategy
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_closeposition), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            var closedPositions = jsonResponse["closed_positions"] as JArray;
+                            var failedClosures = jsonResponse["failed_closures"] as JArray;
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+
+                            // Prepare output
+                            int rowCount = Math.Max(closedPositions?.Count ?? 0, failedClosures?.Count ?? 0) + 2;
+                            var output = new object[rowCount, 3];
+                            output[0, 0] = "Status";
+                            output[0, 1] = "Message";
+                            output[0, 2] = "";
+                            output[1, 0] = status;
+                            output[1, 1] = message;
+                            output[1, 2] = "";
+
+                            if (closedPositions != null && closedPositions.Count > 0)
+                            {
+                                output[1, 2] = "Closed Positions";
+                                for (int i = 0; i < closedPositions.Count; i++)
+                                {
+                                    output[i + 2, 2] = closedPositions[i]?.ToString() ?? string.Empty;
+                                }
+                            }
+
+                            if (failedClosures != null && failedClosures.Count > 0)
+                            {
+                                output[1, 2] = "Failed Closures";
+                                for (int i = 0; i < failedClosures.Count; i++)
+                                {
+                                    output[i + 2, 2] = failedClosures[i]?.ToString() ?? string.Empty;
+                                }
+                            }
+
+                            return output;
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
+        /// <summary>
+        /// Retrieves the status of a specific order via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_orderstatus",
+            Description = "Retrieves the status of a specific order through OpenAlgo API.")]
+        public static object[,] oa_orderstatus(
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to retrieve status for")] string orderId,
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name associated with the order")] string strategy)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/orderstatus";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["orderid"] = orderId,
+                ["strategy"] = strategy
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_orderstatus), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                            var orderDetails = jsonResponse["order_details"] as JObject;
+
+                            if (orderDetails != null)
+                            {
+                                var output = new object[orderDetails.Count + 2, 2];
+                                output[0, 0] = "Status";
+                                output[0, 1] = "Message";
+                                output[1, 0] = status;
+                                output[1, 1] = message;
+
+                                int row = 2;
+                                foreach (var detail in orderDetails)
+                                {
+                                    output[row, 0] = detail.Key;
+                                    output[row, 1] = detail.Value?.ToString() ?? string.Empty;
+                                    row++;
+                                }
+
+                                return output;
+                            }
+                            else
+                            {
+                                return new object[,] { { "Error: Order details not found." } };
+                            }
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
+        /// <summary>
+        /// Retrieves open positions for a given strategy via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_openposition",
+            Description = "Retrieves open positions for a specified strategy through OpenAlgo API.")]
+        public static object[,] oa_openposition(
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
+            [ExcelArgument(Name = "Product", Description = "Product type (e.g., CNC, MIS)")] string product)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/openposition";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["strategy"] = strategy,
+                ["symbol"] = symbol,
+                ["exchange"] = exchange,
+                ["product"] = product
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_openposition), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                            var positionDetails = jsonResponse["position_details"] as JObject;
+
+                            if (positionDetails != null)
+                            {
+                                var output = new object[positionDetails.Count + 2, 2];
+                                output[0, 0] = "Status";
+                                output[0, 1] = "Message";
+                                output[1, 0] = status;
+                                output[1, 1] = message;
+
+                                int row = 2;
+                                foreach (var detail in positionDetails)
+                                {
+                                    output[row, 0] = detail.Key;
+                                    output[row, 1] = detail.Value?.ToString() ?? string.Empty;
+                                    row++;
+                                }
+
+                                return output;
+                            }
+                            else
+                            {
+                                return new object[,] { { "Error: Position details not found." } };
+                            }
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
     }
 }
