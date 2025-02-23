@@ -108,7 +108,7 @@ namespace OpenAlgo
             [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             // Convert all values to strings
             string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
@@ -180,7 +180,7 @@ namespace OpenAlgo
             [ExcelArgument(Name = "Orders", Description = "Array of order parameters")] object[,] orders)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/basketorder";
 
@@ -274,7 +274,7 @@ namespace OpenAlgo
             [ExcelArgument(Name = "Quantity", Description = "Total order quantity")] object? quantity = null,
             [ExcelArgument(Name = "SplitSize", Description = "Size of each split order")] object? splitsize = null,
             [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType = "MARKET",
-            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC)")] string product = "MIS",
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/MIS)")] string product = "MIS",
             [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
             [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
             [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
@@ -358,5 +358,227 @@ namespace OpenAlgo
                 }
             })!;
         }
+
+        /// <summary>
+        /// Modifies an existing order via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_modifyorder",
+            Description = "Modifies an existing order through OpenAlgo API.")]
+        public static object[,] oa_modifyorder(
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to modify")] string orderId,
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
+            [ExcelArgument(Name = "Quantity", Description = "Order quantity")] object? quantity = null,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType = "MARKET",
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC)")] string product = "MIS",
+            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            // Convert all values to strings
+            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
+            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
+            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
+            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/modifyorder";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["orderid"] = orderId,
+                ["strategy"] = strategy,
+                ["symbol"] = symbol,
+                ["action"] = action,
+                ["exchange"] = exchange,
+                ["quantity"] = quantityStr,
+                ["pricetype"] = priceType,
+                ["product"] = product,
+                ["price"] = priceStr,
+                ["trigger_price"] = triggerPriceStr,
+                ["disclosed_quantity"] = disclosedQuantityStr
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_modifyorder), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+
+                            // Return Status and Message in separate columns
+                            return new object[,]
+                            {
+                                { "Status", "Message" },
+                                { status, message }
+                            };
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
+        /// <summary>
+        /// Cancels an existing order via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_cancelorder",
+            Description = "Cancels an existing order through OpenAlgo API.")]
+        public static object[,] oa_cancelorder(
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to cancel")] string orderId,
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/cancelorder";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["orderid"] = orderId,
+                ["strategy"] = strategy
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_cancelorder), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+
+                            // Return Status and Message in separate columns
+                            return new object[,]
+                            {
+                                { "Status", "Message" },
+                                { status, message }
+                            };
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
+        /// <summary>
+        /// Cancels all open orders for a given strategy via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_cancelallorder",
+            Description = "Cancels all open orders for a specified strategy through OpenAlgo API.")]
+        public static object[,] oa_cancelallorder(
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/cancelallorder";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["strategy"] = strategy
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_cancelallorder), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            var canceledOrders = jsonResponse["canceled_orders"] as JArray;
+                            var failedCancellations = jsonResponse["failed_cancellations"] as JArray;
+                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+
+                            // Prepare output
+                            int rowCount = Math.Max(canceledOrders?.Count ?? 0, failedCancellations?.Count ?? 0) + 2;
+                            var output = new object[rowCount, 3];
+                            output[0, 0] = "Status";
+                            output[0, 1] = "Message";
+                            output[0, 2] = "";
+                            output[1, 0] = status;
+                            output[1, 1] = message;
+                            output[1, 2] = "";
+
+                            if (canceledOrders != null && canceledOrders.Count > 0)
+                            {
+                                output[1, 2] = "Canceled Orders";
+                                for (int i = 0; i < canceledOrders.Count; i++)
+                                {
+                                    output[i + 2, 2] = canceledOrders[i]?.ToString() ?? string.Empty;
+                                }
+                            }
+
+                            if (failedCancellations != null && failedCancellations.Count > 0)
+                            {
+                                output[1, 2] = "Failed Cancellations";
+                                for (int i = 0; i < failedCancellations.Count; i++)
+                                {
+                                    output[i + 2, 2] = failedCancellations[i]?.ToString() ?? string.Empty;
+                                }
+                            }
+
+                            return output;
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
+
     }
 }

@@ -53,7 +53,7 @@ namespace OpenAlgo
         public static object[,] oa_depth(string symbol, string exchange)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/depth";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey, ["symbol"] = symbol, ["exchange"] = exchange };
@@ -106,7 +106,7 @@ namespace OpenAlgo
         public static object[,] oa_history(string symbol, string exchange, string interval, string startDate, string endDate)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/history";
             var payload = new JObject
@@ -158,7 +158,7 @@ namespace OpenAlgo
         public static object[,] oa_intervals()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/intervals";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };

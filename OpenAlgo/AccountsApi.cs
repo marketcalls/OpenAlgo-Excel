@@ -44,7 +44,7 @@ namespace OpenAlgo
         public static object[,] oa_orderbook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/orderbook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
@@ -120,7 +120,7 @@ namespace OpenAlgo
         public static object[,] oa_tradebook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/tradebook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
@@ -180,7 +180,7 @@ namespace OpenAlgo
         public static object[,] oa_positionbook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/positionbook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
@@ -236,7 +236,7 @@ namespace OpenAlgo
         public static object[,] oa_holdings()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/holdings";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
