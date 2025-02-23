@@ -259,5 +259,104 @@ namespace OpenAlgo
                 }
             })!;
         }
+
+        /// <summary>
+        /// Places a split order via OpenAlgo API.
+        /// </summary>
+        [ExcelFunction(
+            Name = "oa_splitorder",
+            Description = "Places a split order through OpenAlgo API.")]
+        public static object[,] oa_splitorder(
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
+            [ExcelArgument(Name = "Quantity", Description = "Total order quantity")] object? quantity = null,
+            [ExcelArgument(Name = "SplitSize", Description = "Size of each split order")] object? splitsize = null,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType = "MARKET",
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC)")] string product = "MIS",
+            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+        {
+            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+
+            // Convert all values to strings
+            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
+            string splitsizeStr = (splitsize is ExcelMissing or null) ? "0" : splitsize.ToString()!;
+            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
+            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
+            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+
+            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/splitorder";
+
+            var payload = new JObject
+            {
+                ["apikey"] = OpenAlgoConfig.ApiKey,
+                ["strategy"] = strategy,
+                ["symbol"] = symbol,
+                ["action"] = action,
+                ["exchange"] = exchange,
+                ["quantity"] = quantityStr,
+                ["splitsize"] = splitsizeStr,
+                ["pricetype"] = priceType,
+                ["product"] = product,
+                ["price"] = priceStr,
+                ["trigger_price"] = triggerPriceStr,
+                ["disclosed_quantity"] = disclosedQuantityStr
+            };
+
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_splitorder), new object[] { }, async () =>
+            {
+                try
+                {
+                    using (var client = new HttpClient())
+                    {
+                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content);
+                        string responseBody = await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var jsonResponse = JObject.Parse(responseBody);
+                            var results = jsonResponse["results"] as JArray;
+
+                            if (results != null)
+                            {
+                                var output = new object[results.Count + 1, 4];
+                                output[0, 0] = "Order Number";
+                                output[0, 1] = "Order ID";
+                                output[0, 2] = "Quantity";
+                                output[0, 3] = "Status";
+
+                                for (int i = 0; i < results.Count; i++)
+                                {
+                                    var result = results[i];
+                                    output[i + 1, 0] = result["order_num"]?.ToString() ?? string.Empty;
+                                    output[i + 1, 1] = result["orderid"]?.ToString() ?? string.Empty;
+                                    output[i + 1, 2] = result["quantity"]?.ToString() ?? string.Empty;
+                                    output[i + 1, 3] = result["status"]?.ToString() ?? string.Empty;
+                                }
+
+                                return output;
+                            }
+                            else
+                            {
+                                return new object[,] { { "Error: Invalid response format." } };
+                            }
+                        }
+                        else
+                        {
+                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new object[,] { { $"Exception: {ex.Message}" } };
+                }
+            })!;
+        }
     }
 }
