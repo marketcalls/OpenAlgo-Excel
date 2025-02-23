@@ -7,7 +7,7 @@ namespace OpenAlgo
     public static class AccountsApi
     {
         [ExcelFunction(Description = "Retrieve funds from OpenAlgo API.")]
-        public static object[,] Funds()
+        public static object[,] oa_funds()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
@@ -15,7 +15,7 @@ namespace OpenAlgo
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/funds";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(Funds), new object[] { }, async () =>
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_funds), new object[] { }, async () =>
             {
                 string json = await Utilities.PostRequestAsync(endpoint, payload);
                 JObject jsonResponse = JObject.Parse(json);
@@ -40,8 +40,8 @@ namespace OpenAlgo
         /// <summary>
         /// Retrieves the OrderBook from OpenAlgo API.
         /// </summary>
-        [ExcelFunction(Name = "OrderBook", Description = "Retrieve the order book from OpenAlgo API.")]
-        public static object[,] OrderBook()
+        [ExcelFunction(Name = "oa_orderbook", Description = "Retrieve the order book from OpenAlgo API.")]
+        public static object[,] oa_orderbook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
@@ -49,7 +49,7 @@ namespace OpenAlgo
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/orderbook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(OrderBook), new object[] { }, async () =>
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_orderbook), new object[] { }, async () =>
             {
                 try
                 {
@@ -116,8 +116,8 @@ namespace OpenAlgo
             })!;
         }
 
-        [ExcelFunction(Name = "TradeBook", Description = "Retrieves the trade book from OpenAlgo API.")]
-        public static object[,] TradeBook()
+        [ExcelFunction(Name = "oa_tradebook", Description = "Retrieves the trade book from OpenAlgo API.")]
+        public static object[,] oa_tradebook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
@@ -125,7 +125,7 @@ namespace OpenAlgo
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/tradebook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(TradeBook), new object[] { }, async () =>
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_tradebook), new object[] { }, async () =>
             {
                 try
                 {
@@ -176,8 +176,8 @@ namespace OpenAlgo
         }
 
 
-        [ExcelFunction(Name = "PositionBook", Description = "Retrieves the position book from OpenAlgo API.")]
-        public static object[,] PositionBook()
+        [ExcelFunction(Name = "oa_positionbook", Description = "Retrieves the position book from OpenAlgo API.")]
+        public static object[,] oa_positionbook()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
@@ -185,7 +185,7 @@ namespace OpenAlgo
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/positionbook";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(PositionBook), new object[] { }, async () =>
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_positionbook), new object[] { }, async () =>
             {
                 try
                 {
@@ -232,8 +232,8 @@ namespace OpenAlgo
         }
 
 
-        [ExcelFunction(Name = "Holdings", Description = "Retrieves holdings from OpenAlgo API.")]
-        public static object[,] Holdings()
+        [ExcelFunction(Name = "oa_holdings", Description = "Retrieves holdings from OpenAlgo API.")]
+        public static object[,] oa_holdings()
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: API Key is not set. Use SetOpenAlgoConfig()" } };
@@ -241,7 +241,7 @@ namespace OpenAlgo
             string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/holdings";
             var payload = new JObject { ["apikey"] = OpenAlgoConfig.ApiKey };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(Holdings), new object[] { }, async () =>
+            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_holdings), new object[] { }, async () =>
             {
                 try
                 {
