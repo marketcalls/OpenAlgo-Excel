@@ -85,5 +85,9 @@ This sets the API key, API version, and base URL for all further API requests.
 - [OpenAlgo API Docs](https://docs.openalgo.in/api-documentation/v1/)
 - [Excel-DNA Documentation](https://excel-dna.net/)
 
+## Disclaimer
+
+The creators of this add-in are not responsible for any issues, losses, or damages that may arise from its use. It is strongly recommended to test all functionalities in OpenAlgo Analyzer Mode before applying them to live trading. Always verify API responses and exercise caution while executing trades.
+
 🚀 Happy Trading!
 
