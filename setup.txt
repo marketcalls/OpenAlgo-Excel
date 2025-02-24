@@ -24,38 +24,110 @@ Name: "x64"; Description: "64-bit OpenAlgo Add-In"; Types: x64 full
 Name: "x86"; Description: "32-bit OpenAlgo Add-In"; Types: x86 full
 
 [Files]
-; 64-bit Add-In (Default)
-Source: "{#SourcePath}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Components: x64; Flags: ignoreversion
+; 64-bit Add-In
+Source: "{#SourcePath}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{app}"; Check: IsExcel64Bit; Flags: ignoreversion
+Source: "{#SourcePath}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: IsExcel64Bit; Flags: ignoreversion
 
-; 32-bit Add-In (Optional)
-Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Components: x86; Flags: ignoreversion
+; 32-bit Add-In
+Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{app}"; Check: not IsExcel64Bit; Flags: ignoreversion
+Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: not IsExcel64Bit; Flags: ignoreversion
 
-; Common Dependencies (Installed for both)
-Source: "{#SourcePath}\OpenAlgo.dll"; DestDir: "{userappdata}\OpenAlgo"; Flags: ignoreversion
-Source: "{#SourcePath}\Newtonsoft.Json.dll"; DestDir: "{userappdata}\OpenAlgo"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Integration.dll"; DestDir: "{userappdata}\OpenAlgo"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\OpenAlgo"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Registration.dll"; DestDir: "{userappdata}\OpenAlgo"; Flags: ignoreversion
+; Common Dependencies - Install to BOTH locations to ensure they are found
+; App Directory
+Source: "{#SourcePath}\OpenAlgo.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.Integration.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.IntelliSense.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.Registration.dll"; DestDir: "{app}"; Flags: ignoreversion
+
+; AddIns Directory (to ensure DLLs are found when XLL loads)
+Source: "{#SourcePath}\OpenAlgo.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.Integration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\ExcelDna.Registration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Uninstall OpenAlgo Excel Add-In"; Filename: "{uninstallexe}"
 
 [Registry]
-; Register 64-bit Add-in (if selected)
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo64"; ValueType: string; ValueName: "FriendlyName"; ValueData: "OpenAlgo Excel Add-In (64-bit)"; Components: x64; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo64"; ValueType: string; ValueName: "OpenAlgo"; ValueData: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"; Components: x64; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo64"; ValueType: dword; ValueName: "LoadBehavior"; ValueData: "3"; Components: x64; Flags: uninsdeletekey
+; Register 64-bit Add-in
+Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Excel\Options"; ValueType: string; ValueName: "OPEN"; ValueData: "/R ""{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"""; Check: IsExcel64Bit; Flags: uninsdeletekey
 
-; Register 32-bit Add-in (if selected)
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo32"; ValueType: string; ValueName: "FriendlyName"; ValueData: "OpenAlgo Excel Add-In (32-bit)"; Components: x86; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo32"; ValueType: string; ValueName: "OpenAlgo"; ValueData: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"; Components: x86; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\Office\Excel\AddIns\OpenAlgo32"; ValueType: dword; ValueName: "LoadBehavior"; ValueData: "3"; Components: x86; Flags: uninsdeletekey
+; Register 32-bit Add-in
+Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Excel\Options"; ValueType: string; ValueName: "OPEN"; ValueData: "/R ""{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"""; Check: not IsExcel64Bit; Flags: uninsdeletekey
 
-[Run]
-; Ensure Excel recognizes the installed add-in by adding a registry key
-Filename: "{sys}\reg.exe"; Parameters: "add HKCU\Software\Microsoft\Office\Excel\AddIns\OpenAlgo32 /v Installed /t REG_DWORD /d 1 /f"; Flags: runhidden; Components: x86
-Filename: "{sys}\reg.exe"; Parameters: "add HKCU\Software\Microsoft\Office\Excel\AddIns\OpenAlgo64 /v Installed /t REG_DWORD /d 1 /f"; Flags: runhidden; Components: x64
+[Code]
+function GetExcelVersion(var Version: string): Boolean;
+var
+  Path: string;
+begin
+  Result := False;
+  // First try Office 16.0 (Office 2016 and later)
+  Path := 'Software\Microsoft\Office\16.0\Excel';
+  if RegKeyExists(HKEY_CURRENT_USER, Path) then
+  begin
+    Version := '16.0';
+    Result := True;
+    Exit;
+  end;
+  
+  // Try Office 15.0 (Office 2013)
+  Path := 'Software\Microsoft\Office\15.0\Excel';
+  if RegKeyExists(HKEY_CURRENT_USER, Path) then
+  begin
+    Version := '15.0';
+    Result := True;
+    Exit;
+  end;
+end;
+
+function IsExcel64Bit(): Boolean;
+var
+  ExcelPath: String;
+  ResultCode: Integer;
+begin
+  Result := False;
+  
+  // Try to get Excel path from registry
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Excel.exe', 
+    '', ExcelPath) then
+  begin
+    // Check if the Excel.exe is 64-bit
+    if not Exec('powershell', 
+      '-NoProfile -Command "if ([System.Environment]::Is64BitOperatingSystem -and ' +
+      '(Get-Item ''' + ExcelPath + ''').Length -gt 2mb) { exit 1 } else { exit 0 }"', 
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := False;
+    end else begin
+      Result := (ResultCode = 1);
+    end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ExcelVersion: string;
+  RegPath: string;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if GetExcelVersion(ExcelVersion) then
+    begin
+      RegPath := 'Software\Microsoft\Office\' + ExcelVersion + '\Excel\Options';
+      RegDeleteValue(HKEY_CURRENT_USER, RegPath, 'OPEN');
+    end;
+  end;
+end;
 
 [UninstallDelete]
-; Clean up everything when uninstalled
-Type: filesandordirs; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo"
+Type: filesandordirs; Name: "{app}"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"; Check: IsExcel64Bit
+Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"; Check: not IsExcel64Bit
+Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo.dll"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\Newtonsoft.Json.dll"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.Integration.dll"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.IntelliSense.dll"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.Registration.dll"
