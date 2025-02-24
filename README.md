@@ -55,11 +55,11 @@ This sets the API key, API version, and base URL for all further API requests.
 | `=oa_placesmartorder("Strategy", "SYMBOL", "BUY/SELL", "EXCHANGE", "LIMIT", "MIS", "10", "100", "0", "0", "0")` | Place a smart order |
 | `=oa_basketorder("Strategy", A1:A10)` | Place multiple orders in a basket |
 | `=oa_splitorder("Strategy", "SYMBOL", "BUY/SELL", "EXCHANGE", "100", "10", "LIMIT", "MIS", "100", "0", "0")` | Place split order |
-| `=oa_modifyorder("ORDER_ID", "Strategy", "SYMBOL", "BUY/SELL", "EXCHANGE", "10", "LIMIT", "MIS", "100", "0", "0")` | Modify an order |
-| `=oa_cancelorder("ORDER_ID", "Strategy")` | Cancel a specific order |
+| `=oa_modifyorder("Strategy", "241700000023457", "RELIANCE", "BUY", "NSE", 1, "LIMIT", "MIS", 2500, 0, 0)` | Modify an order |
+| `=oa_cancelorder("Strategy", "241700000023457")` | Cancel a specific order |
 | `=oa_cancelallorder("Strategy")` | Cancel all orders for a strategy |
 | `=oa_closeposition("Strategy")` | Close all open positions for a strategy |
-| `=oa_orderstatus("ORDER_ID", "Strategy")` | Retrieve order status |
+| `=oa_orderstatus("MyStrategy", "241700000023457")` | Retrieve order status |
 | `=oa_openposition("Strategy", "SYMBOL", "EXCHANGE", "MIS")` | Fetch open positions |
 
 ## Handling API Responses

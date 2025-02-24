@@ -366,8 +366,8 @@ namespace OpenAlgo
             Name = "oa_modifyorder",
             Description = "Modifies an existing order through OpenAlgo API.")]
         public static object[,] oa_modifyorder(
-            [ExcelArgument(Name = "OrderID", Description = "ID of the order to modify")] string orderId,
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to modify")] string orderId,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
             [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
@@ -381,7 +381,6 @@ namespace OpenAlgo
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
 
-            // Convert all values to strings
             string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
             string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
             string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
@@ -392,8 +391,8 @@ namespace OpenAlgo
             var payload = new JObject
             {
                 ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["orderid"] = orderId,
                 ["strategy"] = strategy,
+                ["orderid"] = orderId,
                 ["symbol"] = symbol,
                 ["action"] = action,
                 ["exchange"] = exchange,
@@ -421,7 +420,6 @@ namespace OpenAlgo
                             string status = jsonResponse["status"]?.ToString() ?? "Unknown";
                             string message = jsonResponse["message"]?.ToString() ?? "No message provided";
 
-                            // Return Status and Message in separate columns
                             return new object[,]
                             {
                                 { "Status", "Message" },
@@ -448,8 +446,8 @@ namespace OpenAlgo
             Name = "oa_cancelorder",
             Description = "Cancels an existing order through OpenAlgo API.")]
         public static object[,] oa_cancelorder(
-            [ExcelArgument(Name = "OrderID", Description = "ID of the order to cancel")] string orderId,
-            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to cancel")] string orderId)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
@@ -459,8 +457,8 @@ namespace OpenAlgo
             var payload = new JObject
             {
                 ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["orderid"] = orderId,
-                ["strategy"] = strategy
+                ["strategy"] = strategy,
+                ["orderid"] = orderId
             };
 
             return (object[,])AsyncTaskUtil.RunTask(nameof(oa_cancelorder), new object[] { }, async () =>
@@ -479,11 +477,10 @@ namespace OpenAlgo
                             string status = jsonResponse["status"]?.ToString() ?? "Unknown";
                             string message = jsonResponse["message"]?.ToString() ?? "No message provided";
 
-                            // Return Status and Message in separate columns
                             return new object[,]
                             {
-                                { "Status", "Message" },
-                                { status, message }
+                        { "Status", "Message" },
+                        { status, message }
                             };
                         }
                         else
@@ -668,8 +665,8 @@ namespace OpenAlgo
             Name = "oa_orderstatus",
             Description = "Retrieves the status of a specific order through OpenAlgo API.")]
         public static object[,] oa_orderstatus(
-            [ExcelArgument(Name = "OrderID", Description = "ID of the order to retrieve status for")] string orderId,
-            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name associated with the order")] string strategy)
+            [ExcelArgument(Name = "Strategy", Description = "Trading strategy name associated with the order")] string strategy,
+            [ExcelArgument(Name = "OrderID", Description = "ID of the order to retrieve status for")] string orderId)
         {
             if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
                 return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
@@ -679,8 +676,8 @@ namespace OpenAlgo
             var payload = new JObject
             {
                 ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["orderid"] = orderId,
-                ["strategy"] = strategy
+                ["strategy"] = strategy,
+                ["orderid"] = orderId
             };
 
             return (object[,])AsyncTaskUtil.RunTask(nameof(oa_orderstatus), new object[] { }, async () =>
