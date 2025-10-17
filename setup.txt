@@ -1,8 +1,16 @@
-#define SourcePath "C:\Users\Admin1\source\repos\OpenAlgo\OpenAlgo\bin\Debug\net8.0-windows\publish"
+#define SourcePath "C:\Users\OpenA\source\repos\openalgo-excel\OpenAlgo\bin\Debug\net8.0-windows\publish"
+
+; OpenAlgo Excel Add-In with WebSocket Support
+; Features:
+; - Real-time market data streaming via WebSockets (LTP, Quote, Depth)
+; - REST API integration for trading operations
+; - Automatic subscription management with Excel cell updates
+; - Support for NSE, BSE, NFO, MCX exchanges
+; - WebSocket dependency: System.Net.WebSockets.Client v4.3.2 (included in .NET 8.0 runtime)
 
 [Setup]
 AppName=OpenAlgo Excel Add-In
-AppVersion=1.0.1
+AppVersion=1.0.2
 DefaultDirName={userappdata}\OpenAlgo
 DefaultGroupName=OpenAlgo
 OutputDir=Output
@@ -33,19 +41,20 @@ Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{app}"; Check: not 
 Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: not IsExcel64Bit; Flags: ignoreversion
 
 ; Common Dependencies - Install to BOTH locations to ensure they are found
+; Note: DLL files are in parent directory of publish folder
+; Note: ExcelDna.Integration.dll is embedded in packed XLL files, not distributed separately
+; Note: System.Net.WebSockets.Client is part of .NET 8.0 runtime, not distributed separately
 ; App Directory
-Source: "{#SourcePath}\OpenAlgo.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Integration.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.IntelliSense.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Registration.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\OpenAlgo.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\ExcelDna.IntelliSense.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\ExcelDna.Registration.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; AddIns Directory (to ensure DLLs are found when XLL loads)
-Source: "{#SourcePath}\OpenAlgo.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Integration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\ExcelDna.Registration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\..\OpenAlgo.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\..\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\..\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#SourcePath}\..\ExcelDna.Registration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Uninstall OpenAlgo Excel Add-In"; Filename: "{uninstallexe}"
@@ -128,6 +137,5 @@ Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll";
 Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"; Check: not IsExcel64Bit
 Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\Newtonsoft.Json.dll"
-Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.Integration.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.IntelliSense.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.Registration.dll"
