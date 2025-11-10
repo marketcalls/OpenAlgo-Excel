@@ -8,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using ExcelDna.Integration;
 using System.Timers;
+using System.IO;
 
 namespace OpenAlgo
 {
@@ -42,6 +43,26 @@ namespace OpenAlgo
         // Timer for triggering Excel updates (continuous streaming)
         private System.Timers.Timer? _updateTimer;
 
+        // Authentication confirmation tracking
+        private TaskCompletionSource<bool>? _authTcs;
+
+        // Subscription confirmation tracking
+        private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingSubscriptions = new();
+
+        // Performance optimization - debounce Excel updates
+        private DateTime _lastExcelUpdate = DateTime.MinValue;
+        private const int MIN_UPDATE_INTERVAL_MS = 50; // Max 20 updates/second
+
+        // Logging
+        private static readonly string LogFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenAlgo",
+            "websocket.log"
+        );
+
+        // Backward compatibility: Set to true if backend doesn't send confirmation messages
+        private bool _legacyMode = true;  // Default to true for backward compatibility
+
         public static WebSocketManager Instance
         {
             get
@@ -66,6 +87,27 @@ namespace OpenAlgo
         }
 
         /// <summary>
+        /// Logs messages to a file for debugging
+        /// </summary>
+        private void Log(string level, string message)
+        {
+            try
+            {
+                var logDir = Path.GetDirectoryName(LogFilePath);
+                if (logDir != null && !Directory.Exists(logDir))
+                {
+                    Directory.CreateDirectory(logDir);
+                }
+                string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{level}] {message}\n";
+                File.AppendAllText(LogFilePath, logEntry);
+            }
+            catch
+            {
+                // Silently fail if logging fails
+            }
+        }
+
+        /// <summary>
         /// Timer event handler to trigger Excel recalculation
         /// </summary>
         private void OnUpdateTimerElapsed(object? sender, ElapsedEventArgs e)
@@ -79,12 +121,19 @@ namespace OpenAlgo
         }
 
         /// <summary>
-        /// Triggers Excel recalculation to update all volatile functions
+        /// Triggers Excel recalculation to update all volatile functions (with debouncing)
         /// </summary>
         private void TriggerExcelUpdate()
         {
             try
             {
+                // Debounce: only update if enough time has passed
+                var now = DateTime.UtcNow;
+                if ((now - _lastExcelUpdate).TotalMilliseconds < MIN_UPDATE_INTERVAL_MS)
+                    return;
+
+                _lastExcelUpdate = now;
+
                 // Force Excel to recalculate volatile functions using COM automation
                 ExcelAsyncUtil.QueueAsMacro(() =>
                 {
@@ -97,15 +146,15 @@ namespace OpenAlgo
                             app.Calculate();
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Ignore if calculation fails
+                        Log("ERROR", $"Excel calculation failed: {ex.Message}");
                     }
                 });
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore if Excel interface not available
+                Log("ERROR", $"TriggerExcelUpdate failed: {ex.Message}");
             }
         }
 
@@ -134,17 +183,25 @@ namespace OpenAlgo
             try
             {
                 if (_isConnecting)
+                {
+                    Log("WARN", "Connection already in progress");
                     return "Connection already in progress";
+                }
 
                 if (_webSocket?.State == WebSocketState.Open)
+                {
+                    Log("INFO", "Already connected");
                     return "Already connected";
+                }
 
                 _isConnecting = true;
+                Log("INFO", $"Connecting to {_wsUrl}");
 
                 _webSocket = new ClientWebSocket();
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 await _webSocket.ConnectAsync(new Uri(_wsUrl), _cancellationTokenSource.Token);
+                Log("INFO", "WebSocket connected successfully");
 
                 // Start receiving messages
                 _receiveTask = Task.Run(() => ReceiveMessagesAsync(_cancellationTokenSource.Token));
@@ -161,6 +218,7 @@ namespace OpenAlgo
             catch (Exception ex)
             {
                 _isConnecting = false;
+                Log("ERROR", $"Connection failed: {ex.Message}");
                 return $"Connection failed: {ex.Message}";
             }
         }
@@ -173,7 +231,10 @@ namespace OpenAlgo
             try
             {
                 if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                {
+                    Log("ERROR", "API Key not set");
                     return "Error: API Key not set. Use oa_api() first.";
+                }
 
                 var authMessage = new JObject
                 {
@@ -181,17 +242,56 @@ namespace OpenAlgo
                     ["api_key"] = OpenAlgoConfig.ApiKey
                 };
 
+                Log("INFO", "Sending authentication request");
                 await SendMessageAsync(authMessage.ToString());
 
-                // Wait a bit for authentication response
-                await Task.Delay(500);
+                // Legacy mode: For backward compatibility with backends that don't send confirmations
+                if (_legacyMode)
+                {
+                    // Wait briefly for authentication to process
+                    await Task.Delay(500);
+                    _isAuthenticated = true;
+                    Log("INFO", "Authentication assumed successful (legacy mode)");
+                    return "Connected and authenticated";
+                }
 
-                _isAuthenticated = true;
-                return "Connected and authenticated";
+                // Modern mode: Wait for actual server confirmation
+                _authTcs = new TaskCompletionSource<bool>();
+
+                // Wait for ACTUAL authentication response (max 30 seconds)
+                var timeoutTask = Task.Delay(30000);
+                var completedTask = await Task.WhenAny(_authTcs.Task, timeoutTask);
+
+                if (completedTask == timeoutTask)
+                {
+                    _isAuthenticated = false;
+                    Log("ERROR", "Authentication timeout - no response from server after 30 seconds");
+                    return "Error: Authentication timeout - no response from server";
+                }
+
+                bool authSuccess = await _authTcs.Task;
+                _isAuthenticated = authSuccess;
+
+                if (authSuccess)
+                {
+                    Log("INFO", "Authentication successful");
+                    return "Connected and authenticated";
+                }
+                else
+                {
+                    Log("ERROR", "Authentication failed - server rejected credentials");
+                    return "Error: Authentication failed - server rejected credentials";
+                }
             }
             catch (Exception ex)
             {
+                _isAuthenticated = false;
+                Log("ERROR", $"Authentication exception: {ex.Message}");
                 return $"Authentication failed: {ex.Message}";
+            }
+            finally
+            {
+                _authTcs = null;
             }
         }
 
@@ -200,6 +300,8 @@ namespace OpenAlgo
         /// </summary>
         public async Task<string> SubscribeAsync(string symbol, string exchange, int mode, int? depthLevel = null)
         {
+            string key = GetSubscriptionKey(symbol, exchange, mode);
+
             try
             {
                 if (_webSocket?.State != WebSocketState.Open)
@@ -210,7 +312,10 @@ namespace OpenAlgo
                 }
 
                 if (!_isAuthenticated)
+                {
+                    Log("ERROR", $"Cannot subscribe to {key} - not authenticated");
                     return "Error: Not authenticated";
+                }
 
                 var subscribeMessage = new JObject
                 {
@@ -225,27 +330,78 @@ namespace OpenAlgo
                     subscribeMessage["depth_level"] = depthLevel.Value;
                 }
 
+                Log("INFO", $"Subscribing to {key}");
                 await SendMessageAsync(subscribeMessage.ToString());
 
-                // Store subscription info and clear manual unsubscribe flag
-                string key = GetSubscriptionKey(symbol, exchange, mode);
-                _subscriptions[key] = new SubscriptionInfo
+                // Legacy mode: For backward compatibility with backends that don't send confirmations
+                if (_legacyMode)
                 {
-                    Symbol = symbol,
-                    Exchange = exchange,
-                    Mode = mode,
-                    DepthLevel = depthLevel,
-                    SubscribedAt = DateTime.UtcNow
-                };
+                    // Immediately add to subscriptions (assume success)
+                    _subscriptions[key] = new SubscriptionInfo
+                    {
+                        Symbol = symbol,
+                        Exchange = exchange,
+                        Mode = mode,
+                        DepthLevel = depthLevel,
+                        SubscribedAt = DateTime.UtcNow
+                    };
 
-                // Clear manual unsubscribe flag to allow this subscription
-                _manuallyUnsubscribed.TryRemove(key, out _);
+                    // Clear manual unsubscribe flag to allow this subscription
+                    _manuallyUnsubscribed.TryRemove(key, out _);
 
-                return $"Subscribed: {symbol} ({exchange}) - Mode {mode}";
+                    Log("INFO", $"Subscribed to {key} (legacy mode - assumed success)");
+                    return $"Subscribed: {symbol} ({exchange}) - Mode {mode}";
+                }
+
+                // Modern mode: Wait for server confirmation
+                var tcs = new TaskCompletionSource<bool>();
+                _pendingSubscriptions[key] = tcs;
+
+                // Wait for server confirmation (max 30 seconds)
+                var timeoutTask = Task.Delay(30000);
+                var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
+
+                if (completedTask == timeoutTask)
+                {
+                    _pendingSubscriptions.TryRemove(key, out _);
+                    Log("ERROR", $"Subscription timeout for {key} after 30 seconds");
+                    return $"Error: Subscription timeout for {symbol}";
+                }
+
+                bool subSuccess = await tcs.Task;
+
+                if (subSuccess)
+                {
+                    // Only add to subscriptions if server confirmed
+                    _subscriptions[key] = new SubscriptionInfo
+                    {
+                        Symbol = symbol,
+                        Exchange = exchange,
+                        Mode = mode,
+                        DepthLevel = depthLevel,
+                        SubscribedAt = DateTime.UtcNow
+                    };
+
+                    // Clear manual unsubscribe flag to allow this subscription
+                    _manuallyUnsubscribed.TryRemove(key, out _);
+
+                    Log("INFO", $"Successfully subscribed to {key}");
+                    return $"Subscribed: {symbol} ({exchange}) - Mode {mode}";
+                }
+                else
+                {
+                    Log("ERROR", $"Server rejected subscription for {key}");
+                    return $"Error: Server rejected subscription for {symbol}";
+                }
             }
             catch (Exception ex)
             {
+                Log("ERROR", $"Subscribe exception for {key}: {ex.Message}");
                 return $"Subscribe failed: {ex.Message}";
+            }
+            finally
+            {
+                _pendingSubscriptions.TryRemove(key, out _);
             }
         }
 
@@ -272,15 +428,23 @@ namespace OpenAlgo
                 // Remove subscription info and mark as manually unsubscribed
                 string key = GetSubscriptionKey(symbol, exchange, mode);
                 _subscriptions.TryRemove(key, out _);
+
+                // Remove from market data cache - BOTH keys to prevent memory leak
                 _marketData.TryRemove(key, out _);
+
+                // Also remove topic-based key (backward compatibility storage)
+                string topic = $"{symbol}|{exchange}|{mode}";
+                _marketData.TryRemove(topic, out _);
 
                 // Mark this as manually unsubscribed to prevent auto-resubscribe
                 _manuallyUnsubscribed[key] = DateTime.UtcNow;
 
+                Log("INFO", $"Unsubscribed from {key}");
                 return $"Unsubscribed: {symbol} ({exchange}) - Mode {mode}";
             }
             catch (Exception ex)
             {
+                Log("ERROR", $"Unsubscribe failed for {symbol}: {ex.Message}");
                 return $"Unsubscribe failed: {ex.Message}";
             }
         }
@@ -353,10 +517,19 @@ namespace OpenAlgo
                     }
                 }
 
+                // Clear manual unsubscribe flags after unsubscribe_all
+                // This allows symbols to be resubscribed later (unsubscribe_all is a "reset")
+                ClearManualUnsubscribeFlags();
+
+                // Clear all market data cache to stop data from showing in cells
+                _marketData.Clear();
+
+                Log("INFO", $"Unsubscribed from all {count} subscription(s), cleared manual unsubscribe flags, and cleared market data cache");
                 return $"Unsubscribed from {count} subscription(s)";
             }
             catch (Exception ex)
             {
+                Log("ERROR", $"Unsubscribe all failed: {ex.Message}");
                 return $"Unsubscribe all failed: {ex.Message}";
             }
         }
@@ -383,12 +556,15 @@ namespace OpenAlgo
 
             try
             {
+                Log("INFO", "Started receiving WebSocket messages");
+
                 while (!cancellationToken.IsCancellationRequested && _webSocket?.State == WebSocketState.Open)
                 {
                     var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
+                        Log("INFO", "WebSocket close message received");
                         await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
                         break;
                     }
@@ -404,14 +580,16 @@ namespace OpenAlgo
                         await ProcessMessageAsync(message);
                     }
                 }
+
+                Log("INFO", "Stopped receiving WebSocket messages");
             }
             catch (OperationCanceledException)
             {
-                // Normal cancellation, ignore
+                Log("INFO", "WebSocket receive task cancelled");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"WebSocket receive error: {ex.Message}");
+                Log("ERROR", $"WebSocket receive error: {ex.Message}");
             }
         }
 
@@ -464,27 +642,56 @@ namespace OpenAlgo
                             // Immediately trigger Excel update for responsive streaming
                             TriggerExcelUpdate();
                         }
+                        else
+                        {
+                            Log("WARN", $"Received data for unsubscribed symbol: {key}");
+                        }
                     }
                 }
                 else if (messageType == "authentication")
                 {
                     string? status = jsonMessage["status"]?.ToString();
-                    _isAuthenticated = status == "success";
+                    bool success = status == "success";
+                    _isAuthenticated = success;
+
+                    // Complete the authentication task
+                    _authTcs?.TrySetResult(success);
+
+                    Log("INFO", $"Authentication response: {status}");
                 }
                 else if (messageType == "subscription")
                 {
                     // Handle subscription confirmation
                     string? status = jsonMessage["status"]?.ToString();
-                    // Could log or handle subscription status here
+                    string? symbol = jsonMessage["symbol"]?.ToString();
+                    string? exchange = jsonMessage["exchange"]?.ToString();
+                    int? mode = jsonMessage["mode"]?.ToObject<int?>();
+
+                    if (symbol != null && exchange != null && mode.HasValue)
+                    {
+                        string key = GetSubscriptionKey(symbol, exchange, mode.Value);
+
+                        if (_pendingSubscriptions.TryGetValue(key, out var tcs))
+                        {
+                            bool success = status == "success";
+                            tcs.TrySetResult(success);
+
+                            Log("INFO", $"Subscription confirmation for {key}: {status}");
+                        }
+                    }
+                }
+                else
+                {
+                    Log("DEBUG", $"Received unknown message type: {messageType}");
                 }
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
-                // Invalid JSON, ignore
+                Log("ERROR", $"Invalid JSON message: {ex.Message}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error processing message: {ex.Message}");
+                Log("ERROR", $"Error processing message: {ex.Message}");
             }
         }
 
