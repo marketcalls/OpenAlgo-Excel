@@ -616,10 +616,12 @@ namespace OpenAlgo
 
                 if (messageType == "market_data")
                 {
-                    // Extract subscription details from the data
+                    // Extract subscription details - support both formats
+                    // Format 1: symbol/exchange inside data object
+                    // Format 2: symbol/exchange at top level (OpenAlgo backend format)
                     var data = jsonMessage["data"] as JObject;
-                    string? symbol = data?["symbol"]?.ToString();
-                    string? exchange = data?["exchange"]?.ToString();
+                    string? symbol = data?["symbol"]?.ToString() ?? jsonMessage["symbol"]?.ToString();
+                    string? exchange = data?["exchange"]?.ToString() ?? jsonMessage["exchange"]?.ToString();
                     int? mode = jsonMessage["mode"]?.ToObject<int?>();
 
                     // Only store data if we have an active subscription
@@ -630,6 +632,13 @@ namespace OpenAlgo
                         // Check if this subscription is still active
                         if (_subscriptions.ContainsKey(key))
                         {
+                            // If symbol/exchange are at top level, move them into data for consistency
+                            if (jsonMessage["symbol"] != null && data != null)
+                            {
+                                if (data["symbol"] == null) data["symbol"] = symbol;
+                                if (data["exchange"] == null) data["exchange"] = exchange;
+                            }
+
                             _marketData[key] = jsonMessage;
 
                             // Also store with the topic key for backward compatibility
@@ -646,6 +655,10 @@ namespace OpenAlgo
                         {
                             Log("WARN", $"Received data for unsubscribed symbol: {key}");
                         }
+                    }
+                    else
+                    {
+                        Log("WARN", $"Invalid market_data message - symbol: {symbol}, exchange: {exchange}, mode: {mode}");
                     }
                 }
                 else if (messageType == "authentication")
