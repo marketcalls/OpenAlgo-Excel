@@ -1,16 +1,34 @@
-#define SourcePath "C:\Users\OpenA\source\repos\openalgo-excel\OpenAlgo\bin\Debug\net8.0-windows\publish"
+#define SourcePath "D:\Marketcalls\Excel-openalgo\OpenAlgo-Exceladdins\OpenAlgo\bin\Release\net8.0-windows\publish"
 
-; OpenAlgo Excel Add-In with WebSocket Support
+; OpenAlgo Excel Add-In with WebSocket Support v1.0.3
+;
 ; Features:
 ; - Real-time market data streaming via WebSockets (LTP, Quote, Depth)
 ; - REST API integration for trading operations
 ; - Automatic subscription management with Excel cell updates
 ; - Support for NSE, BSE, NFO, MCX exchanges
+; - Comprehensive logging for diagnostics (%LOCALAPPDATA%\OpenAlgo\websocket.log)
+; - Performance optimized with debouncing (max 20 updates/second)
+; - Legacy mode for backward compatibility with various backend formats
+; - OpenAlgo backend message format support (AliceBlue and all brokers)
 ; - WebSocket dependency: System.Net.WebSockets.Client v4.3.2 (included in .NET 8.0 runtime)
+;
+; Version 1.0.3 Changelog (2025-11-10):
+; - Fixed: Unsubscribe_all now properly clears data and allows resubscription
+; - Fixed: Memory leak on unsubscribe (removed both key and topic entries)
+; - Fixed: OpenAlgo message format support (symbol/exchange at top level)
+; - Fixed: Market data cache clearing after unsubscribe_all
+; - Added: Comprehensive error logging to %LOCALAPPDATA%\OpenAlgo\websocket.log
+; - Added: Legacy mode for backward compatibility (enabled by default)
+; - Added: Performance optimization with debouncing (50ms interval)
+; - Added: Better error messages for authentication and subscription failures
+; - Added: Support for both message formats (OpenAlgo backend and custom backends)
+; - Improved: AliceBlue broker now works correctly with real-time data streaming
+; - Improved: All OpenAlgo-based brokers now supported
 
 [Setup]
 AppName=OpenAlgo Excel Add-In
-AppVersion=1.0.2
+AppVersion=1.0.3
 DefaultDirName={userappdata}\OpenAlgo
 DefaultGroupName=OpenAlgo
 OutputDir=Output
