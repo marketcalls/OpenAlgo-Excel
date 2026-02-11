@@ -17,16 +17,15 @@ namespace OpenAlgo
         public static object oa_ws_connect(
             [ExcelArgument(Name = "WebSocket URL", Description = "Optional: WebSocket URL (e.g., ws://127.0.0.1:8765 or wss://yourdomain.com/ws)")] object wsUrlOptional)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return "Error: API Key not set. Use oa_api() first.";
-
-            // Set WebSocket URL if provided
+            // Set WebSocket URL if provided (synchronous, no API key dependency)
             if (!(wsUrlOptional is ExcelMissing || wsUrlOptional == null))
             {
                 string wsUrl = wsUrlOptional.ToString()!;
                 WebSocketManager.Instance.SetWebSocketUrl(wsUrl);
             }
 
+            // API key check moved into ConnectAsync (which waits for oa_api to set the key)
+            // This prevents the race condition where oa_ws_connect runs before oa_api during recalculation
             return AsyncTaskUtil.RunTask(nameof(oa_ws_connect), new object[] { wsUrlOptional ?? "" }, async () =>
             {
                 return await WebSocketManager.Instance.ConnectAsync();
@@ -161,12 +160,12 @@ namespace OpenAlgo
                     return "Unsubscribed";
                 }
 
-                // Check if subscribed - if not, auto-subscribe
+                // Check if subscribed - if not, auto-subscribe asynchronously
+                // IMPORTANT: Must not block the calculation thread, otherwise oa_api() can never
+                // run to set the API key, causing a deadlock when ConnectAsync waits for it
                 if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 1))
                 {
-                    // Not subscribed - auto-subscribe
-                    var subscribeTask = WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 1);
-                    subscribeTask.Wait(); // Wait for subscription to complete
+                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 1);
                     return "Subscribing...";
                 }
 
@@ -206,11 +205,10 @@ namespace OpenAlgo
                     return new object[,] { { "Unsubscribed" } };
                 }
 
-                // Auto-subscribe if not already subscribed
+                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
                 if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 2))
                 {
-                    var subscribeTask = WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 2);
-                    subscribeTask.Wait();
+                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 2);
                     return new object[,] { { "Subscribing..." } };
                 }
 
@@ -267,11 +265,10 @@ namespace OpenAlgo
                     return new object[,] { { "Unsubscribed" } };
                 }
 
-                // Auto-subscribe if not already subscribed
+                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
                 if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 3))
                 {
-                    var subscribeTask = WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 3, depthLevel ?? 5);
-                    subscribeTask.Wait();
+                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 3, depthLevel ?? 5);
                     return new object[,] { { "Subscribing..." } };
                 }
 
@@ -478,11 +475,10 @@ namespace OpenAlgo
                     return "Unsubscribed";
                 }
 
-                // Auto-subscribe if not already subscribed
+                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
                 if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, mode))
                 {
-                    var subscribeTask = WebSocketManager.Instance.SubscribeAsync(symbol, exchange, mode);
-                    subscribeTask.Wait();
+                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, mode);
                     return "Subscribing...";
                 }
 

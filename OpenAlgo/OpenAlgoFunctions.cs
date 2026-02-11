@@ -22,6 +22,9 @@ namespace OpenAlgo
             OpenAlgoConfig.Version = versionOptional is ExcelMissing || versionOptional == null ? "v1" : versionOptional.ToString()!;
             OpenAlgoConfig.HostUrl = hostUrlOptional is ExcelMissing || hostUrlOptional == null ? "http://127.0.0.1:5000" : hostUrlOptional.ToString()!;
 
+            // Persist config so it survives Excel restarts
+            OpenAlgoConfig.Save();
+
             return $"Configuration updated: API Key Set, Version = {OpenAlgoConfig.Version}, Host = {OpenAlgoConfig.HostUrl}";
         }
     }

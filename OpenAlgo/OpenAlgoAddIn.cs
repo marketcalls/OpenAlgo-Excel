@@ -7,7 +7,10 @@ namespace OpenAlgo
     {
         public void AutoOpen()
         {
-            // ✅ Register IntelliSense
+            // Load saved API key and config from previous session
+            OpenAlgoConfig.Load();
+
+            // Register IntelliSense
             IntelliSenseServer.Install();
         }
 

@@ -33,6 +33,9 @@ namespace OpenAlgo
         // Track manually unsubscribed symbols to prevent auto-resubscribe
         private readonly ConcurrentDictionary<string, DateTime> _manuallyUnsubscribed = new();
 
+        // Track in-progress auto-subscribe attempts to prevent duplicate background tasks
+        private readonly ConcurrentDictionary<string, bool> _autoSubscribeInProgress = new();
+
         private bool _isAuthenticated = false;
         private bool _isConnecting = false;
         private DateTime _lastPingTime = DateTime.MinValue;
@@ -206,8 +209,36 @@ namespace OpenAlgo
                 // Start receiving messages
                 _receiveTask = Task.Run(() => ReceiveMessagesAsync(_cancellationTokenSource.Token));
 
+                // Wait briefly for API key if not set (handles recalculation order race
+                // where oa_ws_connect runs before oa_api sets the key)
+                if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
+                {
+                    Log("INFO", "Waiting for API key to be set...");
+                    for (int i = 0; i < 20 && string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey); i++)
+                    {
+                        await Task.Delay(100);
+                    }
+                }
+
                 // Authenticate
                 var authResult = await AuthenticateAsync();
+
+                if (!_isAuthenticated)
+                {
+                    // Clean up to prevent half-connected dead state
+                    Log("WARN", "Authentication failed, cleaning up WebSocket connection");
+                    try
+                    {
+                        _updateTimer?.Stop();
+                        _cancellationTokenSource?.Cancel();
+                        if (_webSocket?.State == WebSocketState.Open)
+                            await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Auth failed", CancellationToken.None);
+                    }
+                    catch { }
+                    _webSocket = null;
+                    _isConnecting = false;
+                    return authResult;
+                }
 
                 // Start the update timer for continuous streaming
                 _updateTimer?.Start();
@@ -313,8 +344,23 @@ namespace OpenAlgo
 
                 if (!_isAuthenticated)
                 {
-                    Log("ERROR", $"Cannot subscribe to {key} - not authenticated");
-                    return "Error: Not authenticated";
+                    // Try to re-authenticate if API key is now available
+                    // This handles the case where a previous attempt left WS connected but not authed
+                    if (!string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey) && _webSocket?.State == WebSocketState.Open)
+                    {
+                        Log("INFO", $"Attempting re-authentication before subscribing to {key}");
+                        var authResult = await AuthenticateAsync();
+                        if (!_isAuthenticated)
+                        {
+                            Log("ERROR", $"Re-authentication failed for {key}: {authResult}");
+                            return $"Error: {authResult}";
+                        }
+                    }
+                    else
+                    {
+                        Log("ERROR", $"Cannot subscribe to {key} - not authenticated");
+                        return "Error: Not authenticated. Use oa_api() first.";
+                    }
                 }
 
                 var subscribeMessage = new JObject
@@ -473,6 +519,36 @@ namespace OpenAlgo
         {
             string key = GetSubscriptionKey(symbol, exchange, mode);
             return _subscriptions.ContainsKey(key);
+        }
+
+        /// <summary>
+        /// Starts a non-blocking auto-subscribe in the background.
+        /// Prevents duplicate attempts for the same subscription key.
+        /// Used by volatile Excel functions (oa_ws_ltp, oa_ws_quote, etc.) to avoid
+        /// blocking the calculation thread, which would deadlock with ConnectAsync's
+        /// API key wait loop.
+        /// </summary>
+        public void StartAutoSubscribe(string symbol, string exchange, int mode, int? depthLevel = null)
+        {
+            string key = GetSubscriptionKey(symbol, exchange, mode);
+            if (!_autoSubscribeInProgress.TryAdd(key, true))
+                return; // Already in progress
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await SubscribeAsync(symbol, exchange, mode, depthLevel);
+                }
+                catch (Exception ex)
+                {
+                    Log("ERROR", $"Auto-subscribe failed for {key}: {ex.Message}");
+                }
+                finally
+                {
+                    _autoSubscribeInProgress.TryRemove(key, out _);
+                }
+            });
         }
 
         /// <summary>
