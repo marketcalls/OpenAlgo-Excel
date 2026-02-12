@@ -1,6 +1,6 @@
-#define SourcePath "D:\Marketcalls\Excel-openalgo\OpenAlgo-Exceladdins\OpenAlgo\bin\Release\net8.0-windows\publish"
+#define SourcePath "D:\New_Excel_plugin\OpenAlgo-Excel\OpenAlgo\bin\Release\net8.0-windows\publish"
 
-; OpenAlgo Excel Add-In with WebSocket Support v1.0.3
+; OpenAlgo Excel Add-In with WebSocket Support v1.0.4
 ;
 ; Features:
 ; - Real-time market data streaming via WebSockets (LTP, Quote, Depth)
@@ -12,6 +12,24 @@
 ; - Legacy mode for backward compatibility with various backend formats
 ; - OpenAlgo backend message format support (AliceBlue and all brokers)
 ; - WebSocket dependency: System.Net.WebSockets.Client v4.3.2 (included in .NET 8.0 runtime)
+; - Persistent API configuration across Excel restarts (%LOCALAPPDATA%\OpenAlgo\config.json)
+; - Auto-subscribe feature for oa_ws_ltp, oa_ws_quote, oa_ws_depth functions
+; - Non-blocking auto-subscribe to prevent Excel calculation thread deadlocks
+; - oa_ws_field function for extracting specific data fields from real-time streams
+; - Basket orders, split orders, smart orders support
+; - Account functions: funds, orderbook, tradebook, positionbook, holdings
+; - Historical data retrieval with IST timezone conversion
+;
+; Version 1.0.4 Changelog (2026-02-11):
+; - Updated: Source path configuration for new project structure
+; - Updated: Version bump to 1.0.4
+; - Maintained: All WebSocket streaming features (LTP, Quote, Depth)
+; - Maintained: REST API trading operations (place, modify, cancel, smart, split, basket orders)
+; - Maintained: Account management functions (funds, orderbook, tradebook, positionbook, holdings)
+; - Maintained: Persistent config storage (%LOCALAPPDATA%\OpenAlgo\config.json)
+; - Maintained: Non-blocking auto-subscribe to prevent calculation thread deadlocks
+; - Maintained: oa_ws_field for extracting specific real-time data fields
+; - Maintained: Debug function (oa_ws_debug) for troubleshooting subscriptions
 ;
 ; Version 1.0.3 Changelog (2025-11-10):
 ; - Fixed: Unsubscribe_all now properly clears data and allows resubscription
@@ -28,7 +46,7 @@
 
 [Setup]
 AppName=OpenAlgo Excel Add-In
-AppVersion=1.0.3
+AppVersion=1.0.4
 DefaultDirName={userappdata}\OpenAlgo
 DefaultGroupName=OpenAlgo
 OutputDir=Output
@@ -98,7 +116,7 @@ begin
     Result := True;
     Exit;
   end;
-  
+
   // Try Office 15.0 (Office 2013)
   Path := 'Software\Microsoft\Office\15.0\Excel';
   if RegKeyExists(HKEY_CURRENT_USER, Path) then
@@ -115,16 +133,16 @@ var
   ResultCode: Integer;
 begin
   Result := False;
-  
+
   // Try to get Excel path from registry
-  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 
-    'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Excel.exe', 
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Excel.exe',
     '', ExcelPath) then
   begin
     // Check if the Excel.exe is 64-bit
-    if not Exec('powershell', 
+    if not Exec('powershell',
       '-NoProfile -Command "if ([System.Environment]::Is64BitOperatingSystem -and ' +
-      '(Get-Item ''' + ExcelPath + ''').Length -gt 2mb) { exit 1 } else { exit 0 }"', 
+      '(Get-Item ''' + ExcelPath + ''').Length -gt 2mb) { exit 1 } else { exit 0 }"',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     begin
       Result := False;
