@@ -6,29 +6,56 @@ using Newtonsoft.Json.Linq;
 namespace OpenAlgo
 {
     /// <summary>
-    /// Excel functions for WebSocket operations
+    /// Excel functions for WebSocket operations.
+    ///
+    /// The streaming functions (oa_ws_ltp, oa_ws_quote, oa_ws_depth, oa_ws_field and
+    /// oa_ws_orders) are RTD sources, not volatile formulas. Each cell is woken only
+    /// when a tick for its own symbol arrives, which is why the workbook stays editable
+    /// while data streams.
     /// </summary>
     public static class WebSocketFunctions
     {
         /// <summary>
+        /// Largest number of order rows oa_ws_orders will spill by default.
+        /// </summary>
+        private const int DefaultOrderRows = 50;
+
+        /// <summary>
         /// Connects to the WebSocket server with optional URL configuration
         /// </summary>
-        [ExcelFunction(Name = "oa_ws_connect", Description = "Connect to OpenAlgo WebSocket server (optionally specify URL, default: ws://127.0.0.1:8765)")]
+        [ExcelFunction(Name = "oa_ws_connect", Description = "Connect to OpenAlgo WebSocket server (optionally specify URL, default: the saved ws_url)")]
         public static object oa_ws_connect(
             [ExcelArgument(Name = "WebSocket URL", Description = "Optional: WebSocket URL (e.g., ws://127.0.0.1:8765 or wss://yourdomain.com/ws)")] object wsUrlOptional)
         {
             // Set WebSocket URL if provided (synchronous, no API key dependency)
-            if (!(wsUrlOptional is ExcelMissing || wsUrlOptional == null))
+            string wsUrl = Arg.Str(wsUrlOptional, OpenAlgoConfig.WebSocketUrl);
+            if (!string.IsNullOrWhiteSpace(wsUrl))
             {
-                string wsUrl = wsUrlOptional.ToString()!;
+                if (!string.Equals(wsUrl, OpenAlgoConfig.WebSocketUrl, StringComparison.Ordinal))
+                {
+                    OpenAlgoConfig.WebSocketUrl = wsUrl;
+                    OpenAlgoConfig.Save();
+                }
                 WebSocketManager.Instance.SetWebSocketUrl(wsUrl);
             }
 
             // API key check moved into ConnectAsync (which waits for oa_api to set the key)
             // This prevents the race condition where oa_ws_connect runs before oa_api during recalculation
-            return AsyncTaskUtil.RunTask(nameof(oa_ws_connect), new object[] { wsUrlOptional ?? "" }, async () =>
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_connect), new object[] { wsUrl }, async () =>
             {
                 return await WebSocketManager.Instance.ConnectAsync();
+            })!;
+        }
+
+        /// <summary>
+        /// Closes the WebSocket connection and clears all subscriptions
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_disconnect", Description = "Unsubscribe everything and close the OpenAlgo WebSocket connection")]
+        public static object oa_ws_disconnect()
+        {
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_disconnect), new object[] { }, async () =>
+            {
+                return await WebSocketManager.Instance.DisconnectAsync();
             })!;
         }
 
@@ -39,6 +66,25 @@ namespace OpenAlgo
         public static string oa_ws_status()
         {
             return WebSocketManager.Instance.GetConnectionState();
+        }
+
+        /// <summary>
+        /// Reads or sets the minimum gap between two pushed updates for the same cell
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_throttle", Description = "Set the minimum gap in milliseconds between two pushed updates for one streaming cell. 0 pushes every tick. Omit the argument to read the current value.")]
+        public static object oa_ws_throttle(
+            [ExcelArgument(Name = "Milliseconds", Description = "Minimum gap between pushed updates, in milliseconds. 0 means push every tick.")] object millisecondsOptional)
+        {
+            if (Arg.IsMissing(millisecondsOptional))
+                return (double)OpenAlgoConfig.StreamThrottleMs;
+
+            int milliseconds = Arg.Int(millisecondsOptional, OpenAlgoConfig.StreamThrottleMs);
+            if (milliseconds < 0)
+                return "Error: Milliseconds must be 0 or greater";
+
+            OpenAlgoConfig.StreamThrottleMs = milliseconds;
+            OpenAlgoConfig.Save();
+            return (double)OpenAlgoConfig.StreamThrottleMs;
         }
 
         /// <summary>
@@ -58,13 +104,8 @@ namespace OpenAlgo
                 return "Error: Mode must be 1 (LTP), 2 (Quote), or 3 (Depth)";
 
             int? depthLevel = null;
-            if (mode == 3 && !(depthLevelOptional is ExcelMissing))
-            {
-                if (int.TryParse(depthLevelOptional?.ToString(), out int dl))
-                    depthLevel = dl;
-                else
-                    depthLevel = 5; // Default depth level
-            }
+            if (mode == 3)
+                depthLevel = Arg.Int(depthLevelOptional, 5);
 
             return AsyncTaskUtil.RunTask(nameof(oa_ws_subscribe), new object[] { symbol, exchange, mode, depthLevel ?? 0 }, async () =>
             {
@@ -145,215 +186,184 @@ namespace OpenAlgo
         }
 
         /// <summary>
-        /// Gets real-time LTP (Last Traded Price) data - auto-subscribes if needed
+        /// Streams the real-time last traded price. Auto-subscribes to Mode 1 on first use.
         /// </summary>
-        [ExcelFunction(Name = "oa_ws_ltp", Description = "Get real-time Last Traded Price (auto-subscribes to Mode 1)", IsVolatile = true)]
+        [ExcelFunction(Name = "oa_ws_ltp", Description = "Stream the real-time Last Traded Price (auto-subscribes to Mode 1)")]
         public static object oa_ws_ltp(
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange)
         {
-            try
-            {
-                // Check if manually unsubscribed - don't auto-resubscribe
-                if (WebSocketManager.Instance.WasManuallyUnsubscribed(symbol, exchange, 1))
-                {
-                    return "Unsubscribed";
-                }
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return "Error: Symbol and Exchange are required";
 
-                // Check if subscribed - if not, auto-subscribe asynchronously
-                // IMPORTANT: Must not block the calculation thread, otherwise oa_api() can never
-                // run to set the API key, causing a deadlock when ConnectAsync waits for it
-                if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 1))
-                {
-                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 1);
-                    return "Subscribing...";
-                }
-
-                // Subscribed - get data
-                var data = WebSocketManager.Instance.GetMarketData(symbol, exchange, 1);
-                if (data == null)
-                    return "Waiting for data...";
-
-                var marketData = data["data"];
-                if (marketData == null)
-                    return "No data available";
-
-                double? ltp = marketData["ltp"]?.ToObject<double?>();
-                if (ltp.HasValue)
-                    return ltp.Value;
-                return "N/A";
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
+            return ExcelAsyncUtil.Observe(
+                nameof(oa_ws_ltp),
+                new object[] { symbol, exchange },
+                () => new MarketDataObservable(symbol, exchange, 1, null, MarketDataFormat.Ltp));
         }
 
         /// <summary>
-        /// Gets real-time quote data - auto-subscribes if needed
+        /// Streams the real-time quote as a two column key/value table.
+        /// Auto-subscribes to Mode 2 on first use.
         /// </summary>
-        [ExcelFunction(Name = "oa_ws_quote", Description = "Get real-time quote data (OHLC, volume, etc.) - auto-subscribes to Mode 2", IsVolatile = true)]
-        public static object[,] oa_ws_quote(
+        [ExcelFunction(Name = "oa_ws_quote", Description = "Stream real-time quote data (OHLC, volume, etc.) - auto-subscribes to Mode 2")]
+        public static object oa_ws_quote(
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange)
         {
-            try
-            {
-                // Check if manually unsubscribed - don't auto-resubscribe
-                if (WebSocketManager.Instance.WasManuallyUnsubscribed(symbol, exchange, 2))
-                {
-                    return new object[,] { { "Unsubscribed" } };
-                }
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return ExcelTable.Error("Symbol and Exchange are required");
 
-                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
-                if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 2))
-                {
-                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 2);
-                    return new object[,] { { "Subscribing..." } };
-                }
-
-                var data = WebSocketManager.Instance.GetMarketData(symbol, exchange, 2);
-                if (data == null)
-                    return new object[,] { { "Waiting for data..." } };
-
-                var marketData = data["data"] as JObject;
-                if (marketData == null)
-                    return new object[,] { { "No data available" } };
-
-                // Create result array with key-value pairs
-                object[,] result = new object[marketData.Count + 1, 2];
-                result[0, 0] = $"{symbol} ({exchange})";
-                result[0, 1] = "Value";
-
-                int row = 1;
-                foreach (var prop in marketData.Properties())
-                {
-                    result[row, 0] = prop.Name;
-                    result[row, 1] = prop.Value?.ToString() ?? "N/A";
-                    row++;
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                return new object[,] { { $"Error: {ex.Message}" } };
-            }
+            return ExcelAsyncUtil.Observe(
+                nameof(oa_ws_quote),
+                new object[] { symbol, exchange },
+                () => new MarketDataObservable(symbol, exchange, 2, null,
+                    message => MarketDataFormat.Quote(message, symbol, exchange)));
         }
 
         /// <summary>
-        /// Gets real-time market depth data - auto-subscribes if needed
+        /// Streams the real-time order book as a seven column table.
+        /// Auto-subscribes to Mode 3 on first use.
         /// </summary>
-        [ExcelFunction(Name = "oa_ws_depth", Description = "Get real-time market depth (order book) - auto-subscribes to Mode 3", IsVolatile = true)]
-        public static object[,] oa_ws_depth(
+        [ExcelFunction(Name = "oa_ws_depth", Description = "Stream real-time market depth (order book) - auto-subscribes to Mode 3")]
+        public static object oa_ws_depth(
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange,
             [ExcelArgument(Name = "Depth Level", Description = "Optional: Depth level (default: 5)")] object depthLevelOptional)
         {
-            try
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return ExcelTable.Error("Symbol and Exchange are required");
+
+            int depthLevel = Arg.Int(depthLevelOptional, 5);
+            if (depthLevel < 1)
+                depthLevel = 5;
+
+            return ExcelAsyncUtil.Observe(
+                nameof(oa_ws_depth),
+                new object[] { symbol, exchange, depthLevel },
+                () => new MarketDataObservable(symbol, exchange, 3, depthLevel,
+                    message => MarketDataFormat.Depth(message, symbol, exchange)));
+        }
+
+        /// <summary>
+        /// Streams one named field from the real-time payload.
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_field", Description = "Stream a single field from real-time data (e.g., 'ltp', 'open', 'high', 'low', 'close', 'volume') - auto-subscribes")]
+        public static object oa_ws_field(
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange,
+            [ExcelArgument(Name = "Field", Description = "Field name (e.g., 'ltp', 'open', 'high', 'low', 'close', 'volume', 'change_percent')")] string field,
+            [ExcelArgument(Name = "Mode", Description = "Data mode: 1=LTP, 2=Quote, 3=Depth (default: 2)")] object modeOptional)
+        {
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return "Error: Symbol and Exchange are required";
+
+            if (string.IsNullOrWhiteSpace(field))
+                return "Error: Field is required";
+
+            int mode = Arg.Int(modeOptional, 2);
+            if (mode < 1 || mode > 3)
+                return "Error: Mode must be 1 (LTP), 2 (Quote), or 3 (Depth)";
+
+            return ExcelAsyncUtil.Observe(
+                nameof(oa_ws_field),
+                new object[] { symbol, exchange, field, mode },
+                () => new MarketDataObservable(symbol, exchange, mode, mode == 3 ? 5 : (int?)null,
+                    message => MarketDataFormat.Field(message, field)));
+        }
+
+        /// <summary>
+        /// Streams order status updates for the connected account
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_orders", Description = "Stream real-time order updates for the account (auto-subscribes via subscribe_orders)")]
+        public static object oa_ws_orders(
+            [ExcelArgument(Name = "Max Rows", Description = "Optional: largest number of order rows to show (default: 50, cap: 200)")] object maxRowsOptional)
+        {
+            int maxRows = Arg.Int(maxRowsOptional, DefaultOrderRows);
+            if (maxRows < 1)
+                maxRows = DefaultOrderRows;
+            if (maxRows > 200)
+                maxRows = 200;
+
+            return ExcelAsyncUtil.Observe(
+                nameof(oa_ws_orders),
+                new object[] { maxRows },
+                () => new OrderUpdatesObservable(maxRows));
+        }
+
+        /// <summary>
+        /// Stops the account order update stream
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_unsubscribe_orders", Description = "Unsubscribe from real-time order updates")]
+        public static object oa_ws_unsubscribe_orders()
+        {
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_unsubscribe_orders), new object[] { }, async () =>
             {
-                int? depthLevel = null;
-                if (!(depthLevelOptional is ExcelMissing || depthLevelOptional == null))
-                {
-                    if (int.TryParse(depthLevelOptional?.ToString(), out int dl))
-                        depthLevel = dl;
-                }
+                return await WebSocketManager.Instance.UnsubscribeOrdersAsync();
+            })!;
+        }
 
-                // Check if manually unsubscribed - don't auto-resubscribe
-                if (WebSocketManager.Instance.WasManuallyUnsubscribed(symbol, exchange, 3))
-                {
-                    return new object[,] { { "Unsubscribed" } };
-                }
-
-                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
-                if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, 3))
-                {
-                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, 3, depthLevel ?? 5);
-                    return new object[,] { { "Subscribing..." } };
-                }
-
-                var data = WebSocketManager.Instance.GetMarketData(symbol, exchange, 3);
-                if (data == null)
-                    return new object[,] { { "Waiting for data..." } };
-
-                var marketData = data["data"] as JObject;
-                if (marketData == null)
-                    return new object[,] { { "No data available" } };
-
-                double ltp = marketData["ltp"]?.ToObject<double?>() ?? 0;
-
-                // OpenAlgo format: depth.buy and depth.sell arrays
-                var depthObject = marketData["depth"] as JObject;
-                if (depthObject == null)
-                    return new object[,] { { "No depth data available" } };
-
-                JArray buyOrders = depthObject["buy"] as JArray ?? new JArray();
-                JArray sellOrders = depthObject["sell"] as JArray ?? new JArray();
-                int rowCount = Math.Max(buyOrders.Count, sellOrders.Count);
-
-                // Create result array: header + column headers + data rows
-                // Columns: Bid Orders | Bid Qty | Bid Price | LTP | Ask Price | Ask Qty | Ask Orders
-                object[,] resultArray = new object[rowCount + 2, 7];
-
-                // Header row with symbol and LTP
-                resultArray[0, 0] = $"{symbol} ({exchange})";
-                resultArray[0, 1] = "";
-                resultArray[0, 2] = "";
-                resultArray[0, 3] = "LTP";
-                resultArray[0, 4] = ltp;
-                resultArray[0, 5] = "";
-                resultArray[0, 6] = "";
-
-                // Column headers
-                resultArray[1, 0] = "Bid Orders";
-                resultArray[1, 1] = "Bid Qty";
-                resultArray[1, 2] = "Bid Price";
-                resultArray[1, 3] = "";
-                resultArray[1, 4] = "Ask Price";
-                resultArray[1, 5] = "Ask Qty";
-                resultArray[1, 6] = "Ask Orders";
-
-                // Fill depth data
-                for (int i = 0; i < rowCount; i++)
-                {
-                    // Buy side (bids)
-                    if (i < buyOrders.Count)
-                    {
-                        resultArray[i + 2, 0] = buyOrders[i]["orders"]?.ToObject<int?>() ?? 0;
-                        resultArray[i + 2, 1] = buyOrders[i]["quantity"]?.ToObject<int?>() ?? 0;
-                        resultArray[i + 2, 2] = buyOrders[i]["price"]?.ToObject<double?>() ?? 0;
-                    }
-                    else
-                    {
-                        resultArray[i + 2, 0] = 0;
-                        resultArray[i + 2, 1] = 0;
-                        resultArray[i + 2, 2] = 0;
-                    }
-
-                    // Middle column (empty separator)
-                    resultArray[i + 2, 3] = "";
-
-                    // Sell side (asks)
-                    if (i < sellOrders.Count)
-                    {
-                        resultArray[i + 2, 4] = sellOrders[i]["price"]?.ToObject<double?>() ?? 0;
-                        resultArray[i + 2, 5] = sellOrders[i]["quantity"]?.ToObject<int?>() ?? 0;
-                        resultArray[i + 2, 6] = sellOrders[i]["orders"]?.ToObject<int?>() ?? 0;
-                    }
-                    else
-                    {
-                        resultArray[i + 2, 4] = 0;
-                        resultArray[i + 2, 5] = 0;
-                        resultArray[i + 2, 6] = 0;
-                    }
-                }
-
-                return resultArray;
-            }
-            catch (Exception ex)
+        /// <summary>
+        /// Lists the brokers the OpenAlgo server supports
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_brokers", Description = "List the brokers supported by the connected OpenAlgo server")]
+        public static object oa_ws_brokers()
+        {
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_brokers), new object[] { }, async () =>
             {
-                return new object[,] { { $"Error: {ex.Message}" } };
-            }
+                var response = await WebSocketManager.Instance.GetSupportedBrokersAsync();
+
+                if (response["status"]?.ToString() == "error")
+                    return ExcelTable.Error(response["message"]?.ToString() ?? "Unknown error");
+
+                if (response["brokers"] is not JArray brokers || brokers.Count == 0)
+                    return ExcelTable.Single("No brokers reported");
+
+                var result = new object[brokers.Count + 1, 1];
+                result[0, 0] = "Broker";
+                for (int i = 0; i < brokers.Count; i++)
+                    result[i + 1, 0] = ExcelTable.Cell(brokers[i]);
+
+                return result;
+            })!;
+        }
+
+        /// <summary>
+        /// Shows the broker the current session is connected through
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_brokerinfo", Description = "Show the broker and adapter status for the authenticated WebSocket session")]
+        public static object oa_ws_brokerinfo()
+        {
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_brokerinfo), new object[] { }, async () =>
+            {
+                var response = await WebSocketManager.Instance.GetBrokerInfoAsync();
+
+                if (response["status"]?.ToString() == "error")
+                    return ExcelTable.Error(response["message"]?.ToString() ?? "Unknown error");
+
+                var display = new JObject(response);
+                display.Remove("type");
+                return ExcelTable.KeyValue(display);
+            })!;
+        }
+
+        /// <summary>
+        /// Checks the connection with a ping and reports the round trip
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_ping", Description = "Ping the WebSocket server and report the round trip in milliseconds")]
+        public static object oa_ws_ping()
+        {
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_ping), new object[] { }, async () =>
+            {
+                var response = await WebSocketManager.Instance.PingAsync();
+
+                if (response["status"]?.ToString() == "error")
+                    return ExcelTable.Error(response["message"]?.ToString() ?? "Unknown error");
+
+                var display = new JObject(response);
+                display.Remove("type");
+                return ExcelTable.KeyValue(display);
+            })!;
         }
 
         /// <summary>
@@ -367,7 +377,7 @@ namespace OpenAlgo
                 var subscriptions = WebSocketManager.Instance.GetActiveSubscriptions();
 
                 if (subscriptions.Length == 0)
-                    return new object[,] { { "No active subscriptions" } };
+                    return ExcelTable.Single("No active subscriptions");
 
                 object[,] result = new object[subscriptions.Length + 1, 1];
                 result[0, 0] = "Active Subscriptions";
@@ -381,7 +391,7 @@ namespace OpenAlgo
             }
             catch (Exception ex)
             {
-                return new object[,] { { $"Error: {ex.Message}" } };
+                return ExcelTable.Error(ex.Message);
             }
         }
 
@@ -408,20 +418,26 @@ namespace OpenAlgo
         {
             try
             {
+                var manager = WebSocketManager.Instance;
                 var result = new System.Collections.Generic.List<object[]>();
                 result.Add(new object[] { "Debug Information", "Value" });
                 result.Add(new object[] { "Symbol", symbol });
                 result.Add(new object[] { "Exchange", exchange });
                 result.Add(new object[] { "Mode", mode });
-                result.Add(new object[] { "Expected Key", $"{symbol}|{exchange}|{mode}" });
+                result.Add(new object[] { "Expected Key", WebSocketManager.TopicFor(symbol, exchange, mode) });
+                result.Add(new object[] { "Connection State", manager.GetConnectionState() });
+                result.Add(new object[] { "Authenticated", manager.IsAuthenticated });
+                result.Add(new object[] { "WebSocket URL", manager.GetWebSocketUrl() });
+                result.Add(new object[] { "Stream Throttle (ms)", OpenAlgoConfig.StreamThrottleMs });
+                result.Add(new object[] { "Order Stream", manager.IsSubscribedToOrders });
+                result.Add(new object[] { "Buffered Order Updates", manager.GetOrderUpdates().Length });
 
                 // Check if subscription exists
-                var subscriptions = WebSocketManager.Instance.GetActiveSubscriptions();
-                bool isSubscribed = subscriptions.Any(s => s.Contains(symbol) && s.Contains(exchange) && s.Contains(mode.ToString()));
-                result.Add(new object[] { "Is Subscribed", isSubscribed });
+                var subscriptions = manager.GetActiveSubscriptions();
+                result.Add(new object[] { "Is Subscribed", manager.IsSubscribed(symbol, exchange, mode) });
 
                 // Try to get market data
-                var data = WebSocketManager.Instance.GetMarketData(symbol, exchange, mode);
+                var data = manager.GetMarketData(symbol, exchange, mode);
                 result.Add(new object[] { "Has Data", data != null });
 
                 if (data != null)
@@ -438,71 +454,11 @@ namespace OpenAlgo
                     result.Add(new object[] { sub, "" });
                 }
 
-                object[,] resultArray = new object[result.Count, 2];
-                for (int i = 0; i < result.Count; i++)
-                {
-                    resultArray[i, 0] = result[i][0];
-                    resultArray[i, 1] = result[i][1];
-                }
-
-                return resultArray;
+                return ExcelTable.FromRows(result);
             }
             catch (Exception ex)
             {
                 return new object[,] { { "Error", ex.Message } };
-            }
-        }
-
-        /// <summary>
-        /// Gets a specific field from real-time quote data - auto-subscribes if needed
-        /// </summary>
-        [ExcelFunction(Name = "oa_ws_field", Description = "Get a specific field from real-time data (e.g., 'ltp', 'open', 'high', 'low', 'close', 'volume') - auto-subscribes", IsVolatile = true)]
-        public static object oa_ws_field(
-            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
-            [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange,
-            [ExcelArgument(Name = "Field", Description = "Field name (e.g., 'ltp', 'open', 'high', 'low', 'close', 'volume', 'change_percent')")] string field,
-            [ExcelArgument(Name = "Mode", Description = "Data mode: 1=LTP, 2=Quote, 3=Depth (default: 2)")] object modeOptional)
-        {
-            try
-            {
-                int mode = 2; // Default to Quote mode
-                if (!(modeOptional is ExcelMissing) && int.TryParse(modeOptional?.ToString(), out int m))
-                    mode = m;
-
-                // Check if manually unsubscribed - don't auto-resubscribe
-                if (WebSocketManager.Instance.WasManuallyUnsubscribed(symbol, exchange, mode))
-                {
-                    return "Unsubscribed";
-                }
-
-                // Auto-subscribe if not already subscribed (non-blocking to avoid deadlock)
-                if (!WebSocketManager.Instance.IsSubscribed(symbol, exchange, mode))
-                {
-                    WebSocketManager.Instance.StartAutoSubscribe(symbol, exchange, mode);
-                    return "Subscribing...";
-                }
-
-                var data = WebSocketManager.Instance.GetMarketData(symbol, exchange, mode);
-                if (data == null)
-                    return "Waiting for data...";
-
-                var marketData = data["data"];
-                if (marketData == null)
-                    return "No data";
-
-                var fieldValue = marketData[field];
-                if (fieldValue == null)
-                    return "Field not found";
-
-                // Try to parse as number, otherwise return as string
-                if (double.TryParse(fieldValue.ToString(), out double numValue))
-                    return numValue;
-
-                return fieldValue.ToString();
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
             }
         }
     }

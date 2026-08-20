@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Inno Setup compiler output. The released installer is committed to
+# OpenAlgo/binaries/ instead.
+/Output/

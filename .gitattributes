@@ -3,6 +3,13 @@
 ###############################################################################
 * text=auto
 
+# Installer and compiled binaries must never be line-ending normalised.
+# "* text=auto" above relies on NUL-byte detection to classify these; an
+# explicit rule removes the guesswork.
+*.exe binary
+*.xll binary
+*.dll binary
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

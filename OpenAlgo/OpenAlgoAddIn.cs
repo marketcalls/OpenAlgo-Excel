@@ -1,4 +1,5 @@
-﻿using ExcelDna.Integration;
+using System;
+using ExcelDna.Integration;
 using ExcelDna.IntelliSense;
 
 namespace OpenAlgo
@@ -16,7 +17,23 @@ namespace OpenAlgo
 
         public void AutoClose()
         {
-            // ✅ Unregister IntelliSense on close
+            // Close the streaming connection before the add-in unloads. Without this the
+            // socket, its receive loop and any pending throttle flush timers stay alive,
+            // which matters when the add-in is unloaded and loaded again inside one Excel
+            // session: the stale receive loop would keep writing into the cache.
+            //
+            // Excel is shutting down here, so the wait is bounded. A connection that will
+            // not close in time is abandoned rather than holding up the UI.
+            try
+            {
+                WebSocketManager.Instance.DisconnectAsync().Wait(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception)
+            {
+                // Never let shutdown cleanup surface an error to the user.
+            }
+
+            // Unregister IntelliSense on close
             IntelliSenseServer.Uninstall();
         }
     }

@@ -1,35 +1,105 @@
-#define SourcePath "D:\New_Excel_plugin\OpenAlgo-Excel\OpenAlgo\bin\Release\net8.0-windows\publish"
+; PayloadDir is resolved relative to the folder holding this script, so the
+; installer compiles on any machine without editing this line. Override it from
+; the command line when the build output lives elsewhere:
+;   iscc /DPayloadDir="D:\some\other\publish" setup.txt
+;
+; Note the name. SourcePath is a built-in Inno preprocessor variable holding
+; this script's own directory (with a trailing backslash), so it cannot be
+; guarded with #ifndef: it is always defined, the guard never fires, and the
+; file entries silently resolve against the wrong folder. A distinct name
+; avoids that trap while still allowing a command-line override.
+;
+; The two packed XLLs are written into publish by an ordinary "dotnet build".
+; The managed dependencies stay in the parent directory, which is why the DLL
+; entries below reach up with "..".
+#ifndef PayloadDir
+  #define PayloadDir SourcePath + "OpenAlgo\bin\Release\net8.0-windows\publish"
+#endif
+#define AppVersionText "1.0.5"
 
-; OpenAlgo Excel Add-In with WebSocket Support v1.0.4
+; OpenAlgo Excel Add-In with WebSocket Support v1.0.5
 ;
 ; Features:
-; - Real-time market data streaming via WebSockets (LTP, Quote, Depth)
-; - REST API integration for trading operations
-; - Automatic subscription management with Excel cell updates
-; - Support for NSE, BSE, NFO, MCX exchanges
+; - Real-time market data streaming via WebSockets (LTP, Quote, Depth, order updates)
+; - RTD push updates: only the cells whose symbol ticked are refreshed
+; - Full REST coverage: 55 of the 57 registered v1 method/path pairs
+; - 87 worksheet functions across market data, symbols, options, orders, GTT,
+;   account, analyzer, calendar, utility and messaging
+; - Support for NSE, BSE, NFO, BFO, CDS, BCD, MCX and index exchanges
 ; - Comprehensive logging for diagnostics (%LOCALAPPDATA%\OpenAlgo\websocket.log)
-; - Performance optimized with debouncing (max 20 updates/second)
-; - Legacy mode for backward compatibility with various backend formats
-; - OpenAlgo backend message format support (AliceBlue and all brokers)
-; - WebSocket dependency: System.Net.WebSockets.Client v4.3.2 (included in .NET 8.0 runtime)
 ; - Persistent API configuration across Excel restarts (%LOCALAPPDATA%\OpenAlgo\config.json)
-; - Auto-subscribe feature for oa_ws_ltp, oa_ws_quote, oa_ws_depth functions
+; - Auto-subscribe for oa_ws_ltp, oa_ws_quote, oa_ws_depth, oa_ws_field
 ; - Non-blocking auto-subscribe to prevent Excel calculation thread deadlocks
-; - oa_ws_field function for extracting specific data fields from real-time streams
-; - Basket orders, split orders, smart orders support
-; - Account functions: funds, orderbook, tradebook, positionbook, holdings
-; - Historical data retrieval with IST timezone conversion
+; - Order safety switch: oa_trading_enabled() must arm order functions
+; - Shared HTTP client with a configurable timeout, replacing per-call sockets
+;
+; Version 1.0.5 Changelog (2026-08-20):
+; - Fixed: GitHub issue #4, Excel refreshing continuously and copy-paste breaking.
+;   The add-in ran a 100ms timer that called Application.Calculate through
+;   QueueAsMacro up to 20 times a second, and marked the streaming functions
+;   volatile. That forced an application-wide recalculation of every volatile
+;   formula in every open workbook, and Application.Calculate also cancels
+;   Excel's cut and copy clipboard mode, which is what broke copy-paste.
+;   Streaming now uses Excel-DNA RTD push (ExcelAsyncUtil.Observe): one topic
+;   per cell, updated only when that symbol ticks. No timer, no volatile
+;   functions, nothing calls Application.Calculate.
+; - Added: oa_ws_throttle() to set the minimum gap between pushed updates.
+;   The throttle is leading plus trailing edge, so the last value the server
+;   sent always reaches the cell, at most StreamThrottleMs late. 0 pushes
+;   every tick.
+; - Added: WebSocket order updates, disconnect, broker info, supported brokers
+;   and ping (oa_ws_orders, oa_ws_disconnect, oa_ws_brokers, oa_ws_brokerinfo,
+;   oa_ws_ping, oa_ws_unsubscribe_orders).
+; - Added: Options services (oa_optionchain, oa_optiongreeks, oa_multioptiongreeks,
+;   oa_optionsymbol, oa_syntheticfuture, oa_optionsorder, oa_optionsmultiorder).
+; - Added: Symbol services (oa_symbol, oa_search, oa_expiry, oa_instruments,
+;   oa_lotsize, oa_token).
+; - Added: GTT orders (oa_placegttorder, oa_modifygttorder, oa_cancelgttorder,
+;   oa_gttorderbook), covering both SINGLE and OCO trigger types.
+; - Added: Market data (oa_multiquotes, oa_ltp, oa_quote).
+; - Added: Analyzer (oa_analyzer, oa_analyzer_toggle, oa_pnl_symbols),
+;   calendar (oa_holidays, oa_timings, oa_isholiday), margin (oa_margin),
+;   and utility (oa_ping, oa_chart, oa_chart_set, oa_version, oa_request, oa_json).
+; - Added: Messaging. WhatsApp notify with all four recipient forms, and all ten
+;   API-key Telegram endpoints.
+; - Added: oa_trading_enabled(). A worksheet formula re-evaluates on every
+;   recalculation, so an order formula could silently re-place orders. Order,
+;   GTT and options-order functions now refuse to fire until trading is armed.
+; - Fixed: oa_orderstatus and oa_openposition read order_details and
+;   position_details, keys the API never returns, so both always failed. They
+;   now read data and return real values.
+; - Fixed: every function passed an empty async identity to RunTask, so all
+;   cells calling one function shared a single cached result regardless of
+;   their arguments.
+; - Fixed: functions declared object[,] and cast the pending ExcelErrorNA that
+;   RunTask returns, throwing InvalidCastException. Cells showed #VALUE! while
+;   loading instead of #N/A.
+; - Fixed: every REST call created a new HttpClient with no timeout, leaking a
+;   socket per call. All calls now share one client.
+; - Fixed: server error messages reached the sheet as "Unknown". A 200 response
+;   carrying status error is now surfaced with its message.
+; - Fixed: oa_history assumed a Unix epoch timestamp and hard-added 5:30. It now
+;   also accepts ISO strings and honours their offset. Volume was read as int,
+;   which overflowed above 2.1bn, and is now read as double.
+; - Fixed: oa_depth discarded open, high, low, prev_close, ltq, oi, totalbuyqty
+;   and totalsellqty. oa_positionbook dropped ltp and pnl. The orderbook and
+;   holdings statistics blocks were discarded and are now available from
+;   oa_orderbook_stats() and oa_holdings_stats().
+; - Fixed installer: uninsdeletekey deleted the whole Excel\Options key on
+;   uninstall, taking the user's Excel settings and every other add-in's
+;   registration. Registration moved into [Code], which claims a free OPEN slot
+;   instead of overwriting slot 0, and removes only that value.
+; - Fixed installer: the Excel bitness check tested the OS and an Excel.exe file
+;   size above 2MB. Excel.exe is 50 to 80MB at both bitnesses, so the test always
+;   passed and 32-bit Excel on 64-bit Windows received the 64-bit XLL and failed
+;   to load. It now reads the Click-to-Run platform, falling back to which
+;   registry view holds Excel's InstallRoot.
+; - Removed installer: the [Types] and [Components] sections had no matching
+;   Components flag on any file entry, so the choice they offered did nothing.
 ;
 ; Version 1.0.4 Changelog (2026-02-11):
 ; - Updated: Source path configuration for new project structure
 ; - Updated: Version bump to 1.0.4
-; - Maintained: All WebSocket streaming features (LTP, Quote, Depth)
-; - Maintained: REST API trading operations (place, modify, cancel, smart, split, basket orders)
-; - Maintained: Account management functions (funds, orderbook, tradebook, positionbook, holdings)
-; - Maintained: Persistent config storage (%LOCALAPPDATA%\OpenAlgo\config.json)
-; - Maintained: Non-blocking auto-subscribe to prevent calculation thread deadlocks
-; - Maintained: oa_ws_field for extracting specific real-time data fields
-; - Maintained: Debug function (oa_ws_debug) for troubleshooting subscriptions
 ;
 ; Version 1.0.3 Changelog (2025-11-10):
 ; - Fixed: Unsubscribe_all now properly clears data and allows resubscription
@@ -38,15 +108,21 @@
 ; - Fixed: Market data cache clearing after unsubscribe_all
 ; - Added: Comprehensive error logging to %LOCALAPPDATA%\OpenAlgo\websocket.log
 ; - Added: Legacy mode for backward compatibility (enabled by default)
-; - Added: Performance optimization with debouncing (50ms interval)
 ; - Added: Better error messages for authentication and subscription failures
 ; - Added: Support for both message formats (OpenAlgo backend and custom backends)
 ; - Improved: AliceBlue broker now works correctly with real-time data streaming
 ; - Improved: All OpenAlgo-based brokers now supported
 
 [Setup]
+; An explicit AppId keeps upgrades tracking the same installation even if the
+; display name changes. Without it Inno derives the id from AppName.
+AppId={{9F2C6A41-5D18-4E7B-9C3A-0B7E4D2A6F51}
 AppName=OpenAlgo Excel Add-In
-AppVersion=1.0.4
+AppVersion={#AppVersionText}
+AppPublisher=OpenAlgo
+AppPublisherURL=https://openalgo.in
+UninstallDisplayName=OpenAlgo Excel Add-In
+VersionInfoVersion={#AppVersionText}
 DefaultDirName={userappdata}\OpenAlgo
 DefaultGroupName=OpenAlgo
 OutputDir=Output
@@ -54,124 +130,212 @@ OutputBaseFilename=OpenAlgoSetup
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=lowest
+; Requires Inno Setup 6.3 or later. On 6.0 to 6.2 use: ArchitecturesInstallIn64BitMode=x64
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableDirPage=yes
+; Excel holds a lock on a loaded XLL, so ignoreversion alone cannot replace it.
+; Restart Manager asks the user to close Excel instead of failing mid-install.
+CloseApplications=yes
+CloseApplicationsFilter=*.xll,*.dll
+RestartApplications=no
 
-[Types]
-Name: "full"; Description: "Install OpenAlgo Excel Add-In (Recommended)"
-Name: "x64"; Description: "Install 64-bit OpenAlgo Add-In (for 64-bit Excel)"
-Name: "x86"; Description: "Install 32-bit OpenAlgo Add-In (for 32-bit Excel)"
-
-[Components]
-Name: "all"; Description: "Full Installation (Includes 64-bit and 32-bit)"; Types: full
-Name: "x64"; Description: "64-bit OpenAlgo Add-In"; Types: x64 full
-Name: "x86"; Description: "32-bit OpenAlgo Add-In"; Types: x86 full
+; The [Types] and [Components] sections were removed in 1.0.5. They offered a
+; 64-bit, 32-bit and full choice, but no [Files] entry carried a Components
+; flag, so the selection had no effect and every file installed regardless.
+; Bitness is detected automatically by IsExcel64Bit below, which is what
+; actually decided the outcome all along.
 
 [Files]
 ; 64-bit Add-In
-Source: "{#SourcePath}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{app}"; Check: IsExcel64Bit; Flags: ignoreversion
-Source: "{#SourcePath}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: IsExcel64Bit; Flags: ignoreversion
+Source: "{#PayloadDir}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{app}"; Check: IsExcel64Bit; Flags: ignoreversion
+Source: "{#PayloadDir}\OpenAlgo-AddIn64-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: IsExcel64Bit; Flags: ignoreversion
 
 ; 32-bit Add-In
-Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{app}"; Check: not IsExcel64Bit; Flags: ignoreversion
-Source: "{#SourcePath}\OpenAlgo-AddIn-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: not IsExcel64Bit; Flags: ignoreversion
+Source: "{#PayloadDir}\OpenAlgo-AddIn-packed.xll"; DestDir: "{app}"; Check: not IsExcel64Bit; Flags: ignoreversion
+Source: "{#PayloadDir}\OpenAlgo-AddIn-packed.xll"; DestDir: "{userappdata}\Microsoft\AddIns"; Check: not IsExcel64Bit; Flags: ignoreversion
 
 ; Common Dependencies - Install to BOTH locations to ensure they are found
 ; Note: DLL files are in parent directory of publish folder
 ; Note: ExcelDna.Integration.dll is embedded in packed XLL files, not distributed separately
 ; Note: System.Net.WebSockets.Client is part of .NET 8.0 runtime, not distributed separately
 ; App Directory
-Source: "{#SourcePath}\..\OpenAlgo.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\..\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\..\ExcelDna.IntelliSense.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\..\ExcelDna.Registration.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\OpenAlgo.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\Newtonsoft.Json.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\ExcelDna.IntelliSense.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\ExcelDna.Registration.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; AddIns Directory (to ensure DLLs are found when XLL loads)
-Source: "{#SourcePath}\..\OpenAlgo.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\..\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\..\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
-Source: "{#SourcePath}\..\ExcelDna.Registration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\OpenAlgo.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\Newtonsoft.Json.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\ExcelDna.IntelliSense.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
+Source: "{#PayloadDir}\..\ExcelDna.Registration.dll"; DestDir: "{userappdata}\Microsoft\AddIns"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Uninstall OpenAlgo Excel Add-In"; Filename: "{uninstallexe}"
 
-[Registry]
-; Register 64-bit Add-in
-Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Excel\Options"; ValueType: string; ValueName: "OPEN"; ValueData: "/R ""{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"""; Check: IsExcel64Bit; Flags: uninsdeletekey
-
-; Register 32-bit Add-in
-Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Excel\Options"; ValueType: string; ValueName: "OPEN"; ValueData: "/R ""{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"""; Check: not IsExcel64Bit; Flags: uninsdeletekey
-
-[Code]
-function GetExcelVersion(var Version: string): Boolean;
-var
-  Path: string;
-begin
-  Result := False;
-  // First try Office 16.0 (Office 2016 and later)
-  Path := 'Software\Microsoft\Office\16.0\Excel';
-  if RegKeyExists(HKEY_CURRENT_USER, Path) then
-  begin
-    Version := '16.0';
-    Result := True;
-    Exit;
-  end;
-
-  // Try Office 15.0 (Office 2013)
-  Path := 'Software\Microsoft\Office\15.0\Excel';
-  if RegKeyExists(HKEY_CURRENT_USER, Path) then
-  begin
-    Version := '15.0';
-    Result := True;
-    Exit;
-  end;
-end;
-
-function IsExcel64Bit(): Boolean;
-var
-  ExcelPath: String;
-  ResultCode: Integer;
-begin
-  Result := False;
-
-  // Try to get Excel path from registry
-  if RegQueryStringValue(HKEY_LOCAL_MACHINE,
-    'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Excel.exe',
-    '', ExcelPath) then
-  begin
-    // Check if the Excel.exe is 64-bit
-    if not Exec('powershell',
-      '-NoProfile -Command "if ([System.Environment]::Is64BitOperatingSystem -and ' +
-      '(Get-Item ''' + ExcelPath + ''').Length -gt 2mb) { exit 1 } else { exit 0 }"',
-      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    begin
-      Result := False;
-    end else begin
-      Result := (ResultCode = 1);
-    end;
-  end;
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  ExcelVersion: string;
-  RegPath: string;
-begin
-  if CurUninstallStep = usPostUninstall then
-  begin
-    if GetExcelVersion(ExcelVersion) then
-    begin
-      RegPath := 'Software\Microsoft\Office\' + ExcelVersion + '\Excel\Options';
-      RegDeleteValue(HKEY_CURRENT_USER, RegPath, 'OPEN');
-    end;
-  end;
-end;
+; There is deliberately no [Registry] section as of 1.0.5.
+;
+; The previous version wrote a fixed OPEN value with the uninsdeletekey flag.
+; That flag deletes the whole Excel\Options key on uninstall, taking the user's
+; Excel settings and every other add-in registration with it. The fixed OPEN
+; name also overwrote whatever add-in already occupied slot 0. Registration now
+; happens in [Code], which claims a free slot and removes exactly that one.
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
-Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"; Check: IsExcel64Bit
-Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"; Check: not IsExcel64Bit
+; No Check here: bitness detection at uninstall time can disagree with install
+; time (Office reinstalled at a different bitness, or removed entirely), which
+; would strand a file. Both names are removed unconditionally.
+Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll"
+Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\OpenAlgo.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\Newtonsoft.Json.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.IntelliSense.dll"
 Type: files; Name: "{userappdata}\Microsoft\AddIns\ExcelDna.Registration.dll"
+
+[Code]
+const
+  SettingsKey = 'Software\OpenAlgo\ExcelAddIn';
+
+var
+  BitnessResolved: Boolean;
+  BitnessIs64: Boolean;
+
+{ Detects the Office major version from the per-user hive. }
+function GetExcelVersion(var Version: string): Boolean;
+begin
+  Result := True;
+  if RegKeyExists(HKEY_CURRENT_USER, 'Software\Microsoft\Office\16.0\Excel') then
+    Version := '16.0'
+  else if RegKeyExists(HKEY_CURRENT_USER, 'Software\Microsoft\Office\15.0\Excel') then
+    Version := '15.0'
+  else
+  begin
+    Version := '';
+    Result := False;
+  end;
+end;
+
+{
+  Determines whether the installed Excel is 64-bit.
+
+  The 1.0.4 implementation shelled out to PowerShell and tested
+  Is64BitOperatingSystem together with an Excel.exe file size above 2 MB.
+  Neither half is a bitness test: the first describes Windows rather than
+  Office, and Excel.exe is roughly 50 to 80 MB at both bitnesses, so the size
+  comparison is always true. The net effect was that 32-bit Excel on 64-bit
+  Windows received the 64-bit XLL and failed to load.
+
+  Click-to-Run records the real platform, and MSI installs can be told apart by
+  which registry view holds Excel's InstallRoot: only 64-bit Office writes to
+  the native view. The answer is cached because Inno calls Check functions once
+  per file entry.
+}
+function IsExcel64Bit(): Boolean;
+var
+  Platform: String;
+begin
+  if BitnessResolved then
+  begin
+    Result := BitnessIs64;
+    Exit;
+  end;
+
+  BitnessIs64 := False;
+
+  if not IsWin64 then
+    // 32-bit Windows cannot run 64-bit Office.
+    BitnessIs64 := False
+  else if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Office\ClickToRun\Configuration', 'Platform', Platform) then
+    BitnessIs64 := (CompareText(Platform, 'x64') = 0)
+  else if RegKeyExists(HKLM64, 'SOFTWARE\Microsoft\Office\16.0\Excel\InstallRoot') then
+    BitnessIs64 := True
+  else if RegKeyExists(HKLM64, 'SOFTWARE\Microsoft\Office\15.0\Excel\InstallRoot') then
+    BitnessIs64 := True
+  else
+    // Nothing in the native view means a 32-bit Office under WOW6432Node, or no
+    // Office at all. Installing the 32-bit add-in is the safe default.
+    BitnessIs64 := False;
+
+  BitnessResolved := True;
+  Result := BitnessIs64;
+end;
+
+{
+  Registers the XLL in the first free OPEN slot.
+
+  Excel enumerates add-ins as OPEN, OPEN1, OPEN2 and so on. Writing a fixed
+  OPEN overwrites whichever add-in already holds slot 0. This walks the list,
+  reuses our own entry when reinstalling, and records the slot so uninstall
+  removes exactly that value and nothing else.
+}
+procedure RegisterAddIn();
+var
+  Version, RegPath, XllPath, ValueName, Existing: String;
+  Index: Integer;
+begin
+  if not GetExcelVersion(Version) then
+    Version := '16.0';
+
+  RegPath := 'Software\Microsoft\Office\' + Version + '\Excel\Options';
+
+  if IsExcel64Bit then
+    XllPath := ExpandConstant('{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn64-packed.xll')
+  else
+    XllPath := ExpandConstant('{userappdata}\Microsoft\AddIns\OpenAlgo-AddIn-packed.xll');
+
+  Index := 0;
+  ValueName := 'OPEN';
+  while RegQueryStringValue(HKEY_CURRENT_USER, RegPath, ValueName, Existing) do
+  begin
+    // Reuse our own slot on reinstall rather than accumulating entries.
+    if Pos('openalgo-addin', Lowercase(Existing)) > 0 then
+      Break;
+    Index := Index + 1;
+    ValueName := 'OPEN' + IntToStr(Index);
+  end;
+
+  RegWriteStringValue(HKEY_CURRENT_USER, RegPath, ValueName, '/R "' + XllPath + '"');
+
+  RegWriteStringValue(HKEY_CURRENT_USER, SettingsKey, 'OpenValueName', ValueName);
+  RegWriteStringValue(HKEY_CURRENT_USER, SettingsKey, 'OfficeVersion', Version);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterAddIn;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Version, RegPath, ValueName, ConfigDir: String;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+
+  if not RegQueryStringValue(HKEY_CURRENT_USER, SettingsKey, 'OfficeVersion', Version) then
+    if not GetExcelVersion(Version) then
+      Version := '16.0';
+
+  if not RegQueryStringValue(HKEY_CURRENT_USER, SettingsKey, 'OpenValueName', ValueName) then
+    ValueName := 'OPEN';
+
+  RegPath := 'Software\Microsoft\Office\' + Version + '\Excel\Options';
+
+  // Delete only our value. The surrounding key holds the user's Excel settings
+  // and any other add-in registrations.
+  RegDeleteValue(HKEY_CURRENT_USER, RegPath, ValueName);
+  RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, SettingsKey);
+
+  // config.json holds the OpenAlgo API key in clear text and websocket.log can
+  // hold session detail, so offer to remove them rather than leaving them behind.
+  ConfigDir := ExpandConstant('{localappdata}\OpenAlgo');
+  if DirExists(ConfigDir) then
+  begin
+    if MsgBox('Remove saved OpenAlgo settings and logs?' + #13#10 + #13#10 +
+              'This deletes your stored API key from:' + #13#10 + ConfigDir,
+              mbConfirmation, MB_YESNO) = IDYES then
+      DelTree(ConfigDir, True, True, True);
+  end;
+end;
