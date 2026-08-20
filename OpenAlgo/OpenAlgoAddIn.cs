@@ -11,6 +11,12 @@ namespace OpenAlgo
             // Load saved API key and config from previous session
             OpenAlgoConfig.Load();
 
+            // Lower Excel's own RTD collection interval. It ships at 2000 ms, which caps
+            // every streaming cell at one update every two seconds no matter how fast the
+            // feed is. Broker feeds run at roughly 1 to 11 updates per second, so the
+            // default silently discards most of them and live data looks frozen.
+            ExcelRtdSettings.Apply();
+
             // Register IntelliSense
             IntelliSenseServer.Install();
         }

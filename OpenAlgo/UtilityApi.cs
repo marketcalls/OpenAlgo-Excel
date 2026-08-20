@@ -449,10 +449,26 @@ namespace OpenAlgo
                 new("API Key Set", OpenAlgoClient.HasApiKey),
                 new("Timeout Seconds", (double)OpenAlgoConfig.TimeoutSeconds),
                 new("Stream Throttle Ms", (double)OpenAlgoConfig.StreamThrottleMs),
+                // Excel's own RTD collection interval, read live rather than from config,
+                // because Excel is the authority and it defaults to 2000 ms. A value of
+                // 2000 here is the usual explanation for streaming cells looking frozen.
+                new("Excel RTD Interval Ms", RtdIntervalDisplay()),
                 new("Trading Enabled", OpenAlgoConfig.TradingEnabled)
             };
 
             return ExcelTable.KeyValue(pairs);
+        }
+
+        /// <summary>
+        /// Excel's live RTD collection interval, falling back to the configured value
+        /// when the Excel object model cannot be reached.
+        /// </summary>
+        private static object RtdIntervalDisplay()
+        {
+            int live = ExcelRtdSettings.Read();
+            if (live == -2)
+                return $"{OpenAlgoConfig.RtdThrottleMs} (configured, Excel not readable)";
+            return (double)live;
         }
 
         /// <summary>

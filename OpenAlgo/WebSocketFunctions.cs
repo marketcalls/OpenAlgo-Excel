@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using ExcelDna.Integration;
 using ExcelDna.Registration.Utils;
 using Newtonsoft.Json.Linq;
@@ -39,6 +39,12 @@ namespace OpenAlgo
                 WebSocketManager.Instance.SetWebSocketUrl(wsUrl);
             }
 
+            // Excel's RTD collection interval defaults to 2000 ms, which caps every
+            // streaming cell at one update every two seconds. AutoOpen already lowers it,
+            // but reapply here: the COM object is not always reachable that early, and
+            // Excel restores its own value on some transitions.
+            ExcelRtdSettings.Apply();
+
             // API key check moved into ConnectAsync (which waits for oa_api to set the key)
             // This prevents the race condition where oa_ws_connect runs before oa_api during recalculation
             return AsyncTaskUtil.RunTask(nameof(oa_ws_connect), new object[] { wsUrl }, async () =>
@@ -71,6 +77,34 @@ namespace OpenAlgo
         /// <summary>
         /// Reads or sets the minimum gap between two pushed updates for the same cell
         /// </summary>
+        /// <summary>
+        /// Reads or sets Excel's own RealTimeData collection interval.
+        /// </summary>
+        [ExcelFunction(Name = "oa_rtd_interval", Description = "Set Excel's RTD collection interval in milliseconds. Excel defaults to 2000, which caps every streaming cell at one update per two seconds. 0 means update as soon as data arrives. Omit the argument to read the current value.", Category = "OpenAlgo Stream")]
+        public static object oa_rtd_interval(
+            [ExcelArgument(Name = "Milliseconds", Description = "Excel RTD collection interval. 0 updates as soon as data arrives, 2000 is the Excel default, -1 freezes streaming until a manual recalculation.")] object millisecondsOptional)
+        {
+            if (Arg.IsMissing(millisecondsOptional))
+            {
+                int live = ExcelRtdSettings.Read();
+                return live == -2 ? (object)(double)OpenAlgoConfig.RtdThrottleMs : (double)live;
+            }
+
+            int milliseconds = Arg.Int(millisecondsOptional, OpenAlgoConfig.RtdThrottleMs);
+            if (milliseconds < -1)
+                return "Error: Milliseconds must be -1 or greater";
+
+            OpenAlgoConfig.RtdThrottleMs = milliseconds;
+            OpenAlgoConfig.Save();
+            ExcelRtdSettings.Apply(milliseconds);
+
+            if (milliseconds == 0)
+                return "Excel RTD interval set to 0 ms (updates as soon as data arrives)";
+            if (milliseconds == -1)
+                return "Excel RTD interval set to -1 (streaming frozen until manual recalculation)";
+            return $"Excel RTD interval set to {milliseconds} ms";
+        }
+
         [ExcelFunction(Name = "oa_ws_throttle", Description = "Set the minimum gap in milliseconds between two pushed updates for one streaming cell. 0 pushes every tick. Omit the argument to read the current value.")]
         public static object oa_ws_throttle(
             [ExcelArgument(Name = "Milliseconds", Description = "Minimum gap between pushed updates, in milliseconds. 0 means push every tick.")] object millisecondsOptional)
