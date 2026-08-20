@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using ExcelDna.Integration;
@@ -22,6 +22,19 @@ namespace OpenAlgo
     /// </summary>
     public static class OrderApi
     {
+        /// <summary>
+        /// Trims and upper-cases a symbol, exchange, action, product or price type.
+        ///
+        /// The server validates these as exact string sets: action is
+        /// OneOf("BUY","SELL","buy","sell") and product is OneOf("MIS","NRML","CNC"),
+        /// so a cell reading "Buy", "Mis" or " NSE " is rejected with HTTP 400 rather
+        /// than being understood. Excel users type these by hand and Excel itself
+        /// capitalises words, so normalising here removes a whole class of confusing
+        /// schema errors. GttApi already does the same.
+        /// </summary>
+        private static string Norm(object? value) =>
+            Arg.Str(value).Trim().ToUpperInvariant();
+
         private const string TradingDisabledMessage =
             "Trading is disabled. Call oa_trading_enabled(TRUE) to arm order functions.";
 
@@ -69,14 +82,14 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
-                    ["symbol"] = symbol,
-                    ["action"] = action,
-                    ["exchange"] = exchange,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
+                    ["symbol"] = Norm(symbol),
+                    ["action"] = Norm(action),
+                    ["exchange"] = Norm(exchange),
                     ["quantity"] = qty
                 };
-                AddText(payload, "pricetype", priceType);
-                AddText(payload, "product", product);
+                AddEnum(payload, "pricetype", priceType);
+                AddEnum(payload, "product", product);
 
                 // price, trigger_price and disclosed_quantity are optional on this
                 // endpoint. Omitting them is not the same as sending 0: a LIMIT order
@@ -144,16 +157,16 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
-                    ["symbol"] = symbol,
-                    ["action"] = action,
-                    ["exchange"] = exchange,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
+                    ["symbol"] = Norm(symbol),
+                    ["action"] = Norm(action),
+                    ["exchange"] = Norm(exchange),
                     ["quantity"] = qty,
                     // position_size is mandatory on this endpoint, so it always travels.
                     ["position_size"] = target
                 };
-                AddText(payload, "pricetype", priceType);
-                AddText(payload, "product", product);
+                AddEnum(payload, "pricetype", priceType);
+                AddEnum(payload, "product", product);
                 AddNumber(payload, "price", price);
                 AddNumber(payload, "trigger_price", triggerPrice);
                 AddInteger(payload, "disclosed_quantity", disclosedQuantity);
@@ -199,7 +212,7 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
                     ["orders"] = orderList
                 };
 
@@ -273,15 +286,15 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
-                    ["symbol"] = symbol,
-                    ["action"] = action,
-                    ["exchange"] = exchange,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
+                    ["symbol"] = Norm(symbol),
+                    ["action"] = Norm(action),
+                    ["exchange"] = Norm(exchange),
                     ["quantity"] = qty,
                     ["splitsize"] = split
                 };
-                AddText(payload, "pricetype", priceType);
-                AddText(payload, "product", product);
+                AddEnum(payload, "pricetype", priceType);
+                AddEnum(payload, "product", product);
                 AddNumber(payload, "price", price);
                 AddNumber(payload, "trigger_price", triggerPrice);
                 AddInteger(payload, "disclosed_quantity", disclosedQuantity);
@@ -350,14 +363,14 @@ namespace OpenAlgo
                 // disclosed_quantity are absent, so an omitted value travels as 0.
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
                     ["orderid"] = orderId,
-                    ["symbol"] = symbol,
-                    ["action"] = action,
-                    ["exchange"] = exchange,
+                    ["symbol"] = Norm(symbol),
+                    ["action"] = Norm(action),
+                    ["exchange"] = Norm(exchange),
                     ["quantity"] = qty,
-                    ["pricetype"] = TextOr(priceType, "MARKET"),
-                    ["product"] = TextOr(product, "MIS"),
+                    ["pricetype"] = Norm(TextOr(priceType, "MARKET")),
+                    ["product"] = Norm(TextOr(product, "MIS")),
                     ["price"] = Arg.Num(price),
                     ["trigger_price"] = Arg.Num(triggerPrice),
                     ["disclosed_quantity"] = Arg.Int(disclosedQuantity)
@@ -396,7 +409,7 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
                     ["orderid"] = orderId
                 };
 
@@ -429,7 +442,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_cancelallorder), new object[] { strategy }, async () =>
             {
-                var payload = new JObject { ["strategy"] = strategy };
+                var payload = new JObject { ["strategy"] = Arg.Str(strategy).Trim() };
 
                 var response = await OpenAlgoClient.PostAsync("cancelallorder", payload);
 
@@ -494,7 +507,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_closeposition), new object[] { strategy }, async () =>
             {
-                var payload = new JObject { ["strategy"] = strategy };
+                var payload = new JObject { ["strategy"] = Arg.Str(strategy).Trim() };
 
                 var response = await OpenAlgoClient.PostAsync("closeposition", payload);
 
@@ -527,7 +540,7 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
+                    ["strategy"] = Arg.Str(strategy).Trim(),
                     ["orderid"] = orderId
                 };
 
@@ -570,10 +583,10 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["strategy"] = strategy,
-                    ["symbol"] = symbol,
-                    ["exchange"] = exchange,
-                    ["product"] = product
+                    ["strategy"] = Arg.Str(strategy).Trim(),
+                    ["symbol"] = Norm(symbol),
+                    ["exchange"] = Norm(exchange),
+                    ["product"] = Norm(product)
                 };
 
                 var response = await OpenAlgoClient.PostAsync("openposition", payload);
@@ -631,6 +644,17 @@ namespace OpenAlgo
         {
             if (!string.IsNullOrWhiteSpace(value))
                 payload[field] = value!.Trim();
+        }
+
+        /// <summary>
+        /// Adds an optional enum field, upper-cased. Used for pricetype and product,
+        /// which the server validates against uppercase only sets, so a cell reading
+        /// "limit" or "mis" would otherwise be rejected with HTTP 400.
+        /// </summary>
+        private static void AddEnum(JObject payload, string field, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                payload[field] = value!.Trim().ToUpperInvariant();
         }
 
         /// <summary>
@@ -699,14 +723,14 @@ namespace OpenAlgo
 
                 var order = new JObject
                 {
-                    ["symbol"] = symbol,
-                    ["exchange"] = exchange,
-                    ["action"] = action,
+                    ["symbol"] = Norm(symbol),
+                    ["exchange"] = Norm(exchange),
+                    ["action"] = Norm(action),
                     ["quantity"] = qty
                 };
 
-                if (cols > 4) AddText(order, "pricetype", Arg.Str(orders[r, 4]));
-                if (cols > 5) AddText(order, "product", Arg.Str(orders[r, 5]));
+                if (cols > 4) AddEnum(order, "pricetype", Arg.Str(orders[r, 4]));
+                if (cols > 5) AddEnum(order, "product", Arg.Str(orders[r, 5]));
                 if (cols > 6) AddNumber(order, "price", orders[r, 6]);
                 if (cols > 7) AddNumber(order, "trigger_price", orders[r, 7]);
                 if (cols > 8) AddInteger(order, "disclosed_quantity", orders[r, 8]);

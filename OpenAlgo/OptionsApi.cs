@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -233,7 +233,7 @@ namespace OpenAlgo
                         if (index < width) info[index] = value;
                     }
                     Put(0, "Underlying");
-                    Put(1, ExcelTable.Cell(data["underlying"]));
+                    Put(1, ExcelTable.Cell(data["underlying"], "underlying"));
                     Put(2, "Spot");
                     Put(3, ExcelTable.Cell(data["underlying_ltp"]));
                     Put(4, "Prev Close");
@@ -274,10 +274,10 @@ namespace OpenAlgo
                         var row = new object[width];
                         int cell = 0;
                         foreach (var field in callFields)
-                            row[cell++] = call == null ? "" : ExcelTable.Cell(call[field]);
-                        row[cell++] = ExcelTable.Cell(entry["strike"]);
+                            row[cell++] = call == null ? "" : ExcelTable.Cell(call[field], field);
+                        row[cell++] = ExcelTable.Cell(entry["strike"], "strike");
                         foreach (var field in putFields)
-                            row[cell++] = put == null ? "" : ExcelTable.Cell(put[field]);
+                            row[cell++] = put == null ? "" : ExcelTable.Cell(put[field], field);
                         rows.Add(row);
                     }
 
@@ -488,7 +488,7 @@ namespace OpenAlgo
                         int cell = 0;
                         foreach (var field in itemFields)
                         {
-                            object value = ExcelTable.Cell(item[field]);
+                            object value = ExcelTable.Cell(item[field], field);
                             // Fall back to what was asked for when the item omits it.
                             if (value is string text && text.Length == 0 && i < requested.Count)
                             {
@@ -498,7 +498,7 @@ namespace OpenAlgo
                             row[cell++] = value;
                         }
                         foreach (var field in greekFields)
-                            row[cell++] = ExcelTable.Cell(greeks[field]);
+                            row[cell++] = ExcelTable.Cell(greeks[field], field);
                         row[cell] = item["message"]?.ToString() ?? item["error"]?.ToString() ?? "";
                         rows.Add(row);
                     }
@@ -724,7 +724,7 @@ namespace OpenAlgo
                     for (int i = 0; i < width; i++)
                         info[i] = "";
                     info[0] = "Underlying";
-                    info[1] = ExcelTable.Cell(response["underlying"]);
+                    info[1] = ExcelTable.Cell(response["underlying"], "underlying");
                     info[2] = "Underlying LTP";
                     info[3] = ExcelTable.Cell(response["underlying_ltp"]);
                     info[4] = "Status";
@@ -751,7 +751,7 @@ namespace OpenAlgo
                         int cell = 0;
                         foreach (var field in fields)
                         {
-                            object value = ExcelTable.Cell(leg[field]);
+                            object value = ExcelTable.Cell(leg[field], field);
                             if (field == "leg" && value is string text && text.Length == 0)
                                 value = (double)(i + 1);
                             row[cell++] = value;
@@ -810,12 +810,12 @@ namespace OpenAlgo
             {
                 var token = data[name];
                 if (token != null)
-                    pairs.Add(new KeyValuePair<string, object>(Caption(name), ExcelTable.Cell(token)));
+                    pairs.Add(new KeyValuePair<string, object>(Caption(name), ExcelTable.Cell(token, name)));
             }
 
             if (flattenGreeks && data["greeks"] is JObject greeks)
                 foreach (var property in greeks.Properties())
-                    pairs.Add(new KeyValuePair<string, object>(Caption(property.Name), ExcelTable.Cell(property.Value)));
+                    pairs.Add(new KeyValuePair<string, object>(Caption(property.Name), ExcelTable.Cell(property.Value, property.Name)));
 
             foreach (var property in data.Properties())
             {
@@ -823,7 +823,7 @@ namespace OpenAlgo
                     continue;
                 if (Hidden.Contains(property.Name, StringComparer.OrdinalIgnoreCase))
                     continue;
-                pairs.Add(new KeyValuePair<string, object>(Caption(property.Name), ExcelTable.Cell(property.Value)));
+                pairs.Add(new KeyValuePair<string, object>(Caption(property.Name), ExcelTable.Cell(property.Value, property.Name)));
             }
 
             return pairs;

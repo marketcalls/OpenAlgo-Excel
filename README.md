@@ -4,13 +4,13 @@
 
 OpenAlgo is an Excel Add-In that provides seamless integration with the OpenAlgo API for algorithmic trading. This add-in allows users to fetch market data, resolve symbols, analyse option chains and Greeks, place and manage orders, retrieve historical data, and stream real-time market data directly from Excel.
 
-The add-in exposes **89 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
+The add-in exposes **88 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
 
 ## Features
 
 - **Account Management**: Funds, order book, trade book, position book, holdings, and pre-trade margin.
 - **Market Data**: Real-time quotes, multi-symbol quotes, market depth, historical candles, and supported intervals.
-- **Symbol Services**: Symbol metadata, instrument search, expiry dates, and the full instrument master.
+- **Symbol Services**: Symbol metadata, instrument search, and expiry dates.
 - **Options Analytics**: Option chain, Black-76 Greeks, batch Greeks, synthetic futures, and option symbol resolution.
 - **Order Management**: Place, modify, cancel, and query orders; smart, basket, split, and options orders.
 - **GTT Orders**: Place, modify, cancel, and list Good Till Triggered orders, including OCO.
@@ -254,7 +254,7 @@ Last traded price as a single number. This is the most convenient function for b
 
 **Function:** `oa_field(symbol, exchange, field)`
 
-One named field of a market quote as a single value. Named `oa_field` rather than `oa_quote` so it cannot be confused with `oa_quotes` in Excel's formula autocomplete, and to parallel the streaming `oa_ws_field`.
+One named field of a market quote as a single value. Parallels the streaming `oa_ws_field`.
 
 Supported fields: `ltp`, `open`, `high`, `low`, `prev_close`, `bid`, `ask`, `volume`, `oi`, plus the computed `change` and `changepct`.
 
@@ -406,21 +406,6 @@ Returns Expiry (in the `DD-MMM-YY` form the API expects back), Date (an Excel se
 ```
 =oa_expiry("NIFTY", "NFO", "options")
 =oa_expiry("NIFTY", "NFO", "options", "monthly")
-```
-
----
-
-### Download the Instrument Master
-
-**Function:** `oa_instruments([exchange], [max_rows])`
-
-Instrument master for one exchange or for all exchanges. Columns are discovered from the payload.
-
-`max_rows` defaults to 2000 because a full master can run to tens of thousands of rows. When the list is truncated, a trailing note row states how many rows exist.
-
-```
-=oa_instruments("NFO")
-=oa_instruments("NSE", 5000)
 ```
 
 ---
@@ -1155,7 +1140,7 @@ Start any troubleshooting with `=oa_version()` and `=oa_ping()`.
 | Configuration      | `oa_api`, `oa_version`, `oa_ping`, `oa_trading_enabled`, `oa_request`, `oa_json`                                                                                                                                        |
 | Account            | `oa_funds`, `oa_orderbook`, `oa_orderbook_stats`, `oa_tradebook`, `oa_positionbook`, `oa_holdings`, `oa_holdings_stats`, `oa_margin`                                                                                    |
 | Market Data        | `oa_ltp`, `oa_field`, `oa_quotes`, `oa_multiquotes`, `oa_depth`, `oa_history`, `oa_intervals`                                                                                                                           |
-| Symbols            | `oa_symbol`, `oa_search`, `oa_expiry`, `oa_instruments`, `oa_lotsize`, `oa_token`                                                                                                                                       |
+| Symbols            | `oa_symbol`, `oa_search`, `oa_expiry`, `oa_lotsize`, `oa_token`                                                                                                                                       |
 | Options            | `oa_optionchain`, `oa_optiongreeks`, `oa_multioptiongreeks`, `oa_optionsymbol`, `oa_syntheticfuture`, `oa_optionsorder`, `oa_optionsmultiorder`                                                                         |
 | Orders             | `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, `oa_splitorder`, `oa_modifyorder`, `oa_cancelorder`, `oa_cancelallorder`, `oa_closeposition`, `oa_orderstatus`, `oa_openposition`                              |
 | GTT                | `oa_placegttorder`, `oa_modifygttorder`, `oa_cancelgttorder`, `oa_gttorderbook`                                                                                                                                         |

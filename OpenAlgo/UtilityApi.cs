@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -279,7 +279,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_isholiday",
-            Description = "TRUE when the market is closed on the date. Derived from /market/timings, since OpenAlgo has no /checkholiday endpoint: an empty session schedule means a weekend or holiday, and with an Exchange given, TRUE means that exchange has no session that day.",
+            Description = "TRUE when the market is closed on the date, covering weekends and holidays. Derived from /market/timings, since OpenAlgo has no /checkholiday endpoint. With an Exchange given, TRUE means that exchange has no session that day. Always open exchanges such as CRYPTO are ignored when no Exchange is given, otherwise every weekend would answer FALSE.",
             Category = CalendarCategory)]
         public static object oa_isholiday(
             [ExcelArgument(Name = "Date", Description = "Date as a cell date or YYYY-MM-DD text.")] object date,
@@ -304,18 +304,42 @@ namespace OpenAlgo
                 if (response["data"] is not JArray items)
                     return (object)ExcelTable.Error("No timings data returned");
 
-                // No session at all: weekend or a full market holiday.
+                // No session at all: a full market holiday.
                 if (items.Count == 0)
                     return (object)true;
 
                 if (exchange.Length == 0)
-                    return (object)false;
+                {
+                    // On a weekend with no special session the server does not return an
+                    // empty schedule: get_market_timings_for_date falls through to a
+                    // crypto only list, because CRYPTO trades 24/7 and is never closed.
+                    // Counting that as "the market is open" would answer FALSE for every
+                    // Saturday and Sunday. Ask instead whether anything other than an
+                    // always open exchange has a session.
+                    bool anyConventional = items.OfType<JObject>()
+                        .Any(s => !IsAlwaysOpenExchange(s["exchange"]?.ToString()));
+
+                    return (object)!anyConventional;
+                }
 
                 bool open = items.OfType<JObject>()
                     .Any(s => string.Equals(s["exchange"]?.ToString(), exchange, StringComparison.OrdinalIgnoreCase));
 
                 return (object)!open;
             })!;
+        }
+
+        /// <summary>
+        /// True for exchanges that never close, so their presence in a day's schedule
+        /// says nothing about whether the market is trading. Mirrors the server's
+        /// CRYPTO_EXCHANGES set in utils/constants.py.
+        /// </summary>
+        private static bool IsAlwaysOpenExchange(string? exchange)
+        {
+            if (string.IsNullOrWhiteSpace(exchange))
+                return false;
+
+            return exchange.Trim().IndexOf("CRYPTO", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // ------------------------------------------------------------------
@@ -726,7 +750,7 @@ namespace OpenAlgo
             [ExcelArgument(Name = "Document Path", Description = "Server-local path to a document such as a PDF or CSV, inside the WHATSAPP_ATTACHMENT_ROOTS allowlist.")] object? documentPathOptional = null,
             [ExcelArgument(Name = "Caption", Description = "Caption for the image. For a document it is sent as a follow up text.")] object? captionOptional = null,
             [ExcelArgument(Name = "Filename", Description = "Overrides the document name shown on the recipient's device.")] object? filenameOptional = null,
-            [ExcelArgument(Name = "Wait For Delivery", Description = "TRUE blocks until the send is attempted and returns a per recipient report. FALSE (default) queues and returns immediately.")] object? waitForDeliveryOptional = null)
+            [ExcelArgument(Name = "Wait For Delivery", Description = "TRUE (the server default) blocks until the send is attempted and returns a per recipient report. FALSE queues and returns immediately.")] object? waitForDeliveryOptional = null)
         {
             if (!OpenAlgoClient.HasApiKey)
                 return ExcelTable.Error("OpenAlgo API Key is not set. Use oa_api()");
@@ -744,7 +768,10 @@ namespace OpenAlgo
             if (text.Length > 4096)
                 return ExcelTable.Error($"Message must be 4096 characters or fewer, this one is {text.Length}.");
 
-            bool wait = false;
+            // /whatsapp/notify defaults wait_for_delivery to TRUE, so the flag has to be
+            // sent on every call. Omitting it when the user asks for FALSE would leave the
+            // server doing the opposite of what the sheet asked for.
+            bool wait = true;
             if (!Arg.IsMissing(waitForDeliveryOptional) && !UtilitySupport.TryReadBool(waitForDeliveryOptional, out wait))
                 return ExcelTable.Error("Wait For Delivery must be TRUE or FALSE.");
 
@@ -757,7 +784,7 @@ namespace OpenAlgo
             if (documentPath.Length > 0) payload["document_path"] = documentPath;
             if (caption.Length > 0) payload["caption"] = caption;
             if (filename.Length > 0) payload["filename"] = filename;
-            if (wait) payload["wait_for_delivery"] = true;
+            payload["wait_for_delivery"] = wait;
 
             string payloadJson = payload.ToString(Formatting.None);
 

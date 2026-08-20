@@ -15,6 +15,14 @@ namespace OpenAlgo
     public static class DataApi
     {
         /// <summary>
+        /// Trims and upper-cases an exchange code. Every request schema validates
+        /// exchange with a case sensitive OneOf against VALID_EXCHANGES, so a cell
+        /// reading "nse" or " NSE " is rejected with HTTP 400 rather than understood.
+        /// </summary>
+        private static string NormExchange(object? value) =>
+            Arg.Str(value).Trim().ToUpperInvariant();
+
+        /// <summary>
         /// Indian Standard Time. OpenAlgo reports market data against this offset and
         /// India does not observe daylight saving, so a fixed offset is exact.
         /// </summary>
@@ -40,7 +48,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_quotes), new object[] { symbol, exchange }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("quotes", payload);
 
                 var error = ExcelTable.ErrorOrNull(response);
@@ -82,7 +90,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_ltp), new object[] { symbol, exchange }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("quotes", payload);
 
                 if (OpenAlgoClient.IsError(response))
@@ -120,7 +128,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_field), new object[] { symbol, exchange, wanted }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("quotes", payload);
 
                 if (OpenAlgoClient.IsError(response))
@@ -178,7 +186,7 @@ namespace OpenAlgo
             {
                 var symbols = new JArray();
                 foreach (var (symbol, exchange) in pairs)
-                    symbols.Add(new JObject { ["symbol"] = symbol, ["exchange"] = exchange });
+                    symbols.Add(new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) });
 
                 var response = await OpenAlgoClient.PostAsync("multiquotes", new JObject { ["symbols"] = symbols });
 
@@ -269,7 +277,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_depth), new object[] { symbol, exchange }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("depth", payload);
 
                 var error = ExcelTable.ErrorOrNull(response);
@@ -358,8 +366,8 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["symbol"] = symbol,
-                    ["exchange"] = exchange,
+                    ["symbol"] = Arg.Str(symbol).Trim(),
+                    ["exchange"] = NormExchange(exchange),
                     ["interval"] = interval,
                     ["start_date"] = start,
                     ["end_date"] = end,

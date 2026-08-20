@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -15,15 +15,12 @@ namespace OpenAlgo
     public static class SymbolApi
     {
         /// <summary>
-        /// Default cap on the number of instrument master rows spilled into a sheet.
-        /// The full master runs to tens of thousands of rows per exchange.
+        /// Trims and upper-cases an exchange code. Every request schema validates
+        /// exchange with a case sensitive OneOf against VALID_EXCHANGES, so a cell
+        /// reading "nse" or " NSE " is rejected with HTTP 400 rather than understood.
         /// </summary>
-        private const int DefaultInstrumentRows = 2000;
-
-        /// <summary>
-        /// Upper bound accepted for MaxRows, well inside the Excel row limit.
-        /// </summary>
-        private const int MaxInstrumentRows = 200000;
+        private static string NormExchange(object? value) =>
+            Arg.Str(value).Trim().ToUpperInvariant();
 
         /// <summary>
         /// Date formats used by the expiry and instrument endpoints.
@@ -50,7 +47,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(nameof(oa_symbol), new object[] { symbol, exchange }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("symbol", payload);
 
                 var error = ExcelTable.ErrorOrNull(response);
@@ -162,8 +159,8 @@ namespace OpenAlgo
             {
                 var payload = new JObject
                 {
-                    ["symbol"] = symbol,
-                    ["exchange"] = exchange,
+                    ["symbol"] = Arg.Str(symbol).Trim(),
+                    ["exchange"] = NormExchange(exchange),
                     ["instrumenttype"] = kind
                 };
 
@@ -176,59 +173,6 @@ namespace OpenAlgo
                     return (object)ExcelTable.Error($"No {kind} expiries for {symbol} on {exchange}");
 
                 return (object)ExpiryTable(expiries, wanted);
-            })!;
-        }
-
-        /// <summary>
-        /// Downloads the locally stored instrument master, optionally for one exchange.
-        /// The result is capped at MaxRows because a full exchange runs to tens of
-        /// thousands of instruments.
-        /// </summary>
-        [ExcelFunction(Name = "oa_instruments", Description = "Instrument master for one exchange or for all exchanges.", Category = "OpenAlgo Symbols")]
-        public static object oa_instruments(
-            [ExcelArgument(Name = "Exchange", Description = "Optional exchange filter: NSE, BSE, NFO, BFO, CDS, BCD, MCX. Omit for every exchange")] object exchange,
-            [ExcelArgument(Name = "MaxRows", Description = "Optional row cap. Defaults to 2000")] object maxRows)
-        {
-            if (!OpenAlgoClient.HasApiKey)
-                return ExcelTable.Error("OpenAlgo API Key is not set. Use oa_api()");
-
-            string filter = Arg.Str(exchange).Trim().ToUpperInvariant();
-
-            int limit = Arg.Int(maxRows, DefaultInstrumentRows);
-            if (limit <= 0)
-                limit = DefaultInstrumentRows;
-            if (limit > MaxInstrumentRows)
-                limit = MaxInstrumentRows;
-
-            return AsyncTaskUtil.RunTask(nameof(oa_instruments), new object[] { filter, limit }, async () =>
-            {
-                var response = await OpenAlgoClient.GetAsync(
-                    "instruments",
-                    ("exchange", filter.Length > 0 ? filter : null),
-                    ("format", "json"));
-
-                var error = ExcelTable.ErrorOrNull(response);
-                if (error != null) return (object)error;
-
-                if (response["data"] is not JArray instruments || instruments.Count == 0)
-                    return (object)ExcelTable.Error(filter.Length > 0
-                        ? $"No instruments found for {filter}"
-                        : "No instruments found");
-
-                int shown = Math.Min(limit, instruments.Count);
-                var page = new JArray();
-                for (int i = 0; i < shown; i++)
-                    page.Add(instruments[i].DeepClone());
-
-                var table = ExcelTable.AutoRows(page);
-                if (shown < instruments.Count)
-                {
-                    string where = filter.Length > 0 ? filter : "all exchanges";
-                    table = WithNote(table,
-                        $"Truncated: showing the first {shown} of {instruments.Count} instruments for {where}. Raise MaxRows to see more.");
-                }
-
-                return (object)table;
             })!;
         }
 
@@ -249,7 +193,7 @@ namespace OpenAlgo
 
             return AsyncTaskUtil.RunTask(caller, new object[] { symbol, exchange, field }, async () =>
             {
-                var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
+                var payload = new JObject { ["symbol"] = Arg.Str(symbol).Trim(), ["exchange"] = NormExchange(exchange) };
                 var response = await OpenAlgoClient.PostAsync("symbol", payload);
 
                 if (OpenAlgoClient.IsError(response))

@@ -465,8 +465,11 @@ namespace OpenAlgo
                     ["pricetype"] = rowPricetype.Length > 0 ? rowPricetype : pricetype
                 };
 
+                // MarginPositionSchema declares price as a string, exactly like quantity.
+                // A JSON number is rejected with "Not a valid string." and the whole
+                // request comes back HTTP 400, so send the same textual form.
                 if (priceText.Length > 0)
-                    position["price"] = Arg.Num(priceText, 0);
+                    position["price"] = Arg.Num(priceText, 0).ToString("0.############", CultureInfo.InvariantCulture);
 
                 basket.Add(position);
             }

@@ -15,9 +15,9 @@
 #ifndef PayloadDir
   #define PayloadDir SourcePath + "OpenAlgo\bin\Release\net8.0-windows\publish"
 #endif
-#define AppVersionText "1.0.5"
+#define AppVersionText "1.0.6"
 
-; OpenAlgo Excel Add-In with WebSocket Support v1.0.5
+; OpenAlgo Excel Add-In with WebSocket Support v1.0.6
 ;
 ; Features:
 ; - Real-time market data streaming via WebSockets (LTP, Quote, Depth, order updates)
@@ -32,6 +32,50 @@
 ; - Non-blocking auto-subscribe to prevent Excel calculation thread deadlocks
 ; - Order safety switch: oa_trading_enabled() must arm order functions
 ; - Shared HTTP client with a configurable timeout, replacing per-call sockets
+;
+; Version 1.0.6 Changelog (2026-08-20):
+; - Fixed: streaming updated roughly once every two seconds instead of following
+;   the feed. Excel applies Application.RTD.ThrottleInterval to every RTD server
+;   and ships it at 2000ms, so a cell repainted at most twice a minute per
+;   symbol however fast the add-in pushed. Broker feeds run at roughly 1 to 11
+;   updates per second, so most updates were discarded and a slow moving symbol
+;   looked frozen. The interval is now set to 0 on add-in load and again on
+;   oa_ws_connect(). Version 1.0.4 was not affected because it bypassed the RTD
+;   path entirely with Application.Calculate(), which is what broke copy-paste.
+; - Added: oa_rtd_interval() to read or change Excel's RTD interval from a sheet,
+;   and oa_version() now reports the live value.
+; - Changed: the add-in's own stream throttle now defaults to 0, pushing every
+;   tick, which matches the DDE behaviour expected of a live quote sheet.
+; - Changed: config files written before this fix are migrated. Their
+;   stream_throttle_ms of 250 was a default rather than a user choice.
+; - Renamed: oa_quote is now oa_field. oa_quote was a prefix of oa_quotes and
+;   differed only by a trailing s, so typing =oa_quotes( opened Excel's formula
+;   autocomplete with oa_quote highlighted and Tab or Enter silently completed
+;   to it, which then demanded a third Field argument. Existing =oa_quote(...)
+;   formulas return #NAME? and should be changed to oa_field.
+; - Audited every function against the server's marshmallow request schemas
+;   rather than the prose documentation, since the two disagree in places.
+; - Fixed: oa_margin sent price as a JSON number, but MarginPositionSchema
+;   declares it as a string, so any basket with a Price column filled in
+;   returned HTTP 400 "Not a valid string".
+; - Fixed: oa_whatsapp_notify dropped wait_for_delivery when the user passed
+;   FALSE. The server defaults that flag to TRUE, so it did the opposite of
+;   what the sheet asked and the asynchronous path was unreachable.
+; - Fixed: oa_isholiday answered FALSE on every weekend. On a weekend the
+;   server returns a crypto only schedule rather than an empty one, because
+;   CRYPTO trades 24/7, and the add-in read that as "the market is open".
+;   Always open exchanges are now ignored when no exchange is given.
+; - Fixed: order functions did not normalise input. The server validates action
+;   as OneOf("BUY","SELL","buy","sell") and product as uppercase only, so a cell
+;   reading "Buy" or "Mis" returned HTTP 400. Symbol, exchange, action, product
+;   and pricetype are now trimmed and upper-cased, matching the GTT functions.
+;   The same normalisation was applied to the market data and symbol functions.
+; - Fixed: option chain, batch Greeks and options order tables rendered order
+;   ids through the value converter without a field name, so a 15 digit id
+;   displayed as 2.40123E+14.
+; - Removed: oa_instruments. The server cannot serve the instrument master:
+;   its handler passes exchange=None to a schema that does not allow null, so
+;   the all-exchanges call always returns HTTP 400. Use oa_search instead.
 ;
 ; Version 1.0.5 Changelog (2026-08-20):
 ; - Fixed: GitHub issue #4, Excel refreshing continuously and copy-paste breaking.
