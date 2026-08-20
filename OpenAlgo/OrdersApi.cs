@@ -1,6 +1,5 @@
-﻿using System;
-using System.Net.Http;
-using System.Text;
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using ExcelDna.Integration;
 using ExcelDna.Registration.Utils;
@@ -8,809 +7,755 @@ using Newtonsoft.Json.Linq;
 
 namespace OpenAlgo
 {
+    /// <summary>
+    /// Worksheet functions covering the OpenAlgo order management endpoints, plus the
+    /// two read only order enquiry functions.
+    ///
+    /// Every function that changes broker state is gated on
+    /// <see cref="OpenAlgoConfig.TradingEnabled"/>. A worksheet function re-evaluates
+    /// whenever the sheet recalculates, so an order formula left in a cell would
+    /// otherwise fire the same order again on every recalculation.
+    ///
+    /// All requests go through <see cref="OpenAlgoClient"/>, which owns a single shared
+    /// HttpClient, applies the configured timeout, adds the API key and normalises any
+    /// failure into a document the callers below turn into readable cell text.
+    /// </summary>
     public static class OrderApi
     {
+        private const string TradingDisabledMessage =
+            "Trading is disabled. Call oa_trading_enabled(TRUE) to arm order functions.";
+
+        private const string NoApiKeyMessage =
+            "OpenAlgo API Key is not set. Use oa_api()";
+
         /// <summary>
-        /// Places an order via OpenAlgo API.
+        /// Places an order through the OpenAlgo placeorder endpoint.
         /// </summary>
         [ExcelFunction(
             Name = "oa_placeorder",
-            Description = "Places an order through OpenAlgo API.")]
-        public static object[,] oa_placeorder(
+            Description = "Places an order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_placeorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
             [ExcelArgument(Name = "Exchange", Description = "Exchange code(NSE/BSE/NFO/MCX)")] string exchange,
-            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType,
-            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML)")] string product,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT/SL/SL-M). Defaults to MARKET")] string priceType,
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML). Defaults to MIS")] string product,
             [ExcelArgument(Name = "Quantity", Description = "Order quantity")] object? quantity = null,
-            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
-            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
-            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+            [ExcelArgument(Name = "Price", Description = "Order price, required for LIMIT and SL orders (optional)")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price, required for SL and SL-M orders (optional)")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity for iceberg orders (optional)")] object? disclosedQuantity = null)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            // ✅ Convert all values to strings
-            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
-            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
-            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
-            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+            string? missing = FirstMissing(
+                ("Strategy", strategy), ("Symbol", symbol), ("Action", action), ("Exchange", exchange));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/placeorder";
+            object[,]? quantityError = ReadPositiveQuantity(quantity, out double qty);
+            if (quantityError != null)
+                return quantityError;
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_placeorder), new object[]
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["symbol"] = symbol,
-                ["action"] = action,
-                ["exchange"] = exchange,
-                ["pricetype"] = priceType,
-                ["product"] = product,
-                ["quantity"] = quantityStr,
-                ["price"] = priceStr,
-                ["trigger_price"] = triggerPriceStr,
-                ["disclosed_quantity"] = disclosedQuantityStr
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_placeorder), new object[] { }, async () =>
+                strategy, symbol, action, exchange, priceType, product,
+                Arg.Str(quantity), Arg.Str(price), Arg.Str(triggerPrice), Arg.Str(disclosedQuantity)
+            }, async () =>
             {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["symbol"] = symbol,
+                    ["action"] = action,
+                    ["exchange"] = exchange,
+                    ["quantity"] = qty
+                };
+                AddText(payload, "pricetype", priceType);
+                AddText(payload, "product", product);
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string orderId = jsonResponse["orderid"]?.ToString() ?? "Unknown";
+                // price, trigger_price and disclosed_quantity are optional on this
+                // endpoint. Omitting them is not the same as sending 0: a LIMIT order
+                // with an explicit price of 0 is rejected, an absent price is not.
+                AddNumber(payload, "price", price);
+                AddNumber(payload, "trigger_price", triggerPrice);
+                AddInteger(payload, "disclosed_quantity", disclosedQuantity);
 
-                            // ✅ Return Order ID in separate columns
-                            return new object[,]
-                            {
-                                { "Order ID", orderId }
-                            };
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                var response = await OpenAlgoClient.PostAsync("placeorder", payload);
+
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                return (object)ExcelTable.Acknowledgement(response, "orderid");
             })!;
         }
 
         /// <summary>
-        /// Places a smart order via OpenAlgo API.
+        /// Places a position aware smart order through the OpenAlgo placesmartorder endpoint.
         /// </summary>
         [ExcelFunction(
             Name = "oa_placesmartorder",
-            Description = "Places a smart order through OpenAlgo API.")]
-        public static object[,] oa_placesmartorder(
+            Description = "Places a smart order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_placesmartorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
             [ExcelArgument(Name = "Exchange", Description = "Exchange code(NSE/BSE/NFO/MCX)")] string exchange,
-            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType,
-            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML)")] string product,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT/SL/SL-M). Defaults to MARKET")] string priceType,
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML). Defaults to MIS")] string product,
             [ExcelArgument(Name = "Quantity", Description = "Order quantity")] object? quantity = null,
-            [ExcelArgument(Name = "PositionSize", Description = "Desired position size")] object? positionSize = null,
-            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
-            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
-            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+            [ExcelArgument(Name = "PositionSize", Description = "Target position size: positive long, negative short, 0 flat. Defaults to 0")] object? positionSize = null,
+            [ExcelArgument(Name = "Price", Description = "Order price, required for LIMIT and SL orders (optional)")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price, required for SL and SL-M orders (optional)")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity for iceberg orders (optional)")] object? disclosedQuantity = null)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            // Convert all values to strings
-            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
-            string positionSizeStr = (positionSize is ExcelMissing or null) ? "0" : positionSize.ToString()!;
-            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
-            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
-            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+            string? missing = FirstMissing(
+                ("Strategy", strategy), ("Symbol", symbol), ("Action", action), ("Exchange", exchange));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/placesmartorder";
+            if (Arg.IsMissing(quantity))
+                return ExcelTable.Error("Quantity is required.");
 
-            var payload = new JObject
+            // A smart order accepts a quantity of zero, which asks OpenAlgo to move the
+            // book to the target position size without adding a fresh leg.
+            double qty = Arg.Num(quantity);
+            if (qty < 0)
+                return ExcelTable.Error("Quantity cannot be negative.");
+
+            double target = Arg.Num(positionSize);
+
+            return AsyncTaskUtil.RunTask(nameof(oa_placesmartorder), new object[]
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["symbol"] = symbol,
-                ["action"] = action,
-                ["exchange"] = exchange,
-                ["pricetype"] = priceType,
-                ["product"] = product,
-                ["quantity"] = quantityStr,
-                ["position_size"] = positionSizeStr,
-                ["price"] = priceStr,
-                ["trigger_price"] = triggerPriceStr,
-                ["disclosed_quantity"] = disclosedQuantityStr
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_placesmartorder), new object[] { }, async () =>
+                strategy, symbol, action, exchange, priceType, product,
+                Arg.Str(quantity), Arg.Str(positionSize), Arg.Str(price),
+                Arg.Str(triggerPrice), Arg.Str(disclosedQuantity)
+            }, async () =>
             {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["symbol"] = symbol,
+                    ["action"] = action,
+                    ["exchange"] = exchange,
+                    ["quantity"] = qty,
+                    // position_size is mandatory on this endpoint, so it always travels.
+                    ["position_size"] = target
+                };
+                AddText(payload, "pricetype", priceType);
+                AddText(payload, "product", product);
+                AddNumber(payload, "price", price);
+                AddNumber(payload, "trigger_price", triggerPrice);
+                AddInteger(payload, "disclosed_quantity", disclosedQuantity);
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string orderId = jsonResponse["orderid"]?.ToString() ?? "Unknown";
+                var response = await OpenAlgoClient.PostAsync("placesmartorder", payload);
 
-                            // Return Order ID in separate columns
-                            return new object[,]
-                            {
-                                { "Order ID", orderId }
-                            };
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                return (object)ExcelTable.Acknowledgement(response, "orderid");
             })!;
         }
 
         /// <summary>
-        /// Places a basket of orders via OpenAlgo API.
+        /// Places a basket of orders read from a worksheet range.
+        ///
+        /// Columns are Symbol, Exchange, Action, Quantity, PriceType, Product, Price,
+        /// TriggerPrice, DisclosedQuantity. The first four are required, the rest may be
+        /// left out of the range or left blank. A header row is detected and skipped.
         /// </summary>
         [ExcelFunction(
             Name = "oa_basketorder",
-            Description = "Places a basket of orders through OpenAlgo API.")]
-        public static object[,] oa_basketorder(
+            Description = "Places a basket of orders through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_basketorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
-            [ExcelArgument(Name = "Orders", Description = "Array of order parameters")] object[,] orders)
+            [ExcelArgument(Name = "Orders", Description = "Range of orders: Symbol, Exchange, Action, Quantity, PriceType, Product, Price, TriggerPrice, DisclosedQuantity")] object[,] orders)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/basketorder";
+            if (string.IsNullOrWhiteSpace(strategy))
+                return ExcelTable.Error("Strategy is required.");
 
-            var orderList = new JArray();
+            object[,]? basketError = BuildBasket(orders, out JArray orderList);
+            if (basketError != null)
+                return basketError;
 
-            for (int i = 0; i < orders.GetLength(0); i++)
+            return AsyncTaskUtil.RunTask(nameof(oa_basketorder),
+                new object[] { strategy, RangeKey(orders) }, async () =>
             {
-                var order = new JObject
+                var payload = new JObject
                 {
-                    ["symbol"] = orders[i, 0]?.ToString() ?? string.Empty,
-                    ["exchange"] = orders[i, 1]?.ToString() ?? string.Empty,
-                    ["action"] = orders[i, 2]?.ToString() ?? string.Empty,
-                    ["quantity"] = orders[i, 3]?.ToString() ?? "0",
-                    ["pricetype"] = orders[i, 4]?.ToString() ?? "MARKET",
-                    ["product"] = orders[i, 5]?.ToString() ?? "MIS",
-                    ["price"] = orders[i, 6]?.ToString() ?? "0",
-                    ["trigger_price"] = orders[i, 7]?.ToString() ?? "0",
-                    ["disclosed_quantity"] = orders[i, 8]?.ToString() ?? "0"
+                    ["strategy"] = strategy,
+                    ["orders"] = orderList
                 };
-                orderList.Add(order);
-            }
 
-            var payload = new JObject
-            {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["orders"] = orderList
-            };
+                var response = await OpenAlgoClient.PostAsync("basketorder", payload);
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_basketorder), new object[] { }, async () =>
-            {
-                try
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                // Individual legs can fail while the basket as a whole reports success,
+                // so every leg gets its own row carrying its status and message.
+                if (response["results"] is JArray results)
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            var results = jsonResponse["results"] as JArray;
-
-                            if (results != null)
-                            {
-                                var output = new object[results.Count + 1, 3];
-                                output[0, 0] = "Symbol";
-                                output[0, 1] = "Order ID";
-                                output[0, 2] = "Status";
-
-                                for (int i = 0; i < results.Count; i++)
-                                {
-                                    var result = results[i];
-                                    output[i + 1, 0] = result["symbol"]?.ToString() ?? string.Empty;
-                                    output[i + 1, 1] = result["orderid"]?.ToString() ?? string.Empty;
-                                    output[i + 1, 2] = result["status"]?.ToString() ?? string.Empty;
-                                }
-
-                                return output;
-                            }
-                            else
-                            {
-                                return new object[,] { { "Error: Invalid response format." } };
-                            }
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
+                    return (object)ExcelTable.Rows(
+                        results,
+                        new[] { "symbol", "status", "orderid", "message" },
+                        new[] { "Symbol", "Status", "Order ID", "Message" },
+                        "No orders were placed");
                 }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+
+                return (object)ExcelTable.Acknowledgement(response);
             })!;
         }
 
         /// <summary>
-        /// Places a split order via OpenAlgo API.
+        /// Splits a large order into several smaller child orders.
         /// </summary>
         [ExcelFunction(
             Name = "oa_splitorder",
-            Description = "Places a split order through OpenAlgo API.")]
-        public static object[,] oa_splitorder(
+            Description = "Places a split order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_splitorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
-            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
-            [ExcelArgument(Name = "Quantity", Description = "Total order quantity")] object? quantity = null,
-            [ExcelArgument(Name = "SplitSize", Description = "Size of each split order")] object? splitsize = null,
-            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType = "MARKET",
-            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/MIS)")] string product = "MIS",
-            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
-            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
-            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code(NSE/BSE/NFO/MCX)")] string exchange,
+            [ExcelArgument(Name = "Quantity", Description = "Total order quantity to split")] object? quantity = null,
+            [ExcelArgument(Name = "SplitSize", Description = "Size of each child order, a positive whole number")] object? splitsize = null,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT/SL/SL-M). Defaults to MARKET")] string priceType = "MARKET",
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML). Defaults to MIS")] string product = "MIS",
+            [ExcelArgument(Name = "Price", Description = "Order price, required for LIMIT and SL orders (optional)")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price, required for SL and SL-M orders (optional)")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity for iceberg orders (optional)")] object? disclosedQuantity = null)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            // Convert all values to strings
-            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
-            string splitsizeStr = (splitsize is ExcelMissing or null) ? "0" : splitsize.ToString()!;
-            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
-            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
-            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+            string? missing = FirstMissing(
+                ("Strategy", strategy), ("Symbol", symbol), ("Action", action), ("Exchange", exchange));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/splitorder";
+            object[,]? quantityError = ReadPositiveQuantity(quantity, out double qty);
+            if (quantityError != null)
+                return quantityError;
 
-            var payload = new JObject
+            if (Arg.IsMissing(splitsize))
+                return ExcelTable.Error("SplitSize is required.");
+
+            int split = Arg.Int(splitsize);
+            if (split < 1)
+                return ExcelTable.Error("SplitSize must be a positive whole number.");
+
+            return AsyncTaskUtil.RunTask(nameof(oa_splitorder), new object[]
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["symbol"] = symbol,
-                ["action"] = action,
-                ["exchange"] = exchange,
-                ["quantity"] = quantityStr,
-                ["splitsize"] = splitsizeStr,
-                ["pricetype"] = priceType,
-                ["product"] = product,
-                ["price"] = priceStr,
-                ["trigger_price"] = triggerPriceStr,
-                ["disclosed_quantity"] = disclosedQuantityStr
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_splitorder), new object[] { }, async () =>
+                strategy, symbol, action, exchange, priceType, product,
+                Arg.Str(quantity), Arg.Str(splitsize), Arg.Str(price),
+                Arg.Str(triggerPrice), Arg.Str(disclosedQuantity)
+            }, async () =>
             {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["symbol"] = symbol,
+                    ["action"] = action,
+                    ["exchange"] = exchange,
+                    ["quantity"] = qty,
+                    ["splitsize"] = split
+                };
+                AddText(payload, "pricetype", priceType);
+                AddText(payload, "product", product);
+                AddNumber(payload, "price", price);
+                AddNumber(payload, "trigger_price", triggerPrice);
+                AddInteger(payload, "disclosed_quantity", disclosedQuantity);
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            var results = jsonResponse["results"] as JArray;
+                var response = await OpenAlgoClient.PostAsync("splitorder", payload);
 
-                            if (results != null)
-                            {
-                                var output = new object[results.Count + 1, 4];
-                                output[0, 0] = "Order Number";
-                                output[0, 1] = "Order ID";
-                                output[0, 2] = "Quantity";
-                                output[0, 3] = "Status";
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
 
-                                for (int i = 0; i < results.Count; i++)
-                                {
-                                    var result = results[i];
-                                    output[i + 1, 0] = result["order_num"]?.ToString() ?? string.Empty;
-                                    output[i + 1, 1] = result["orderid"]?.ToString() ?? string.Empty;
-                                    output[i + 1, 2] = result["quantity"]?.ToString() ?? string.Empty;
-                                    output[i + 1, 3] = result["status"]?.ToString() ?? string.Empty;
-                                }
-
-                                return output;
-                            }
-                            else
-                            {
-                                return new object[,] { { "Error: Invalid response format." } };
-                            }
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
+                if (response["results"] is JArray results)
                 {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
+                    return (object)ExcelTable.Rows(
+                        results,
+                        new[] { "order_num", "orderid", "quantity", "status", "message" },
+                        new[] { "Order Num", "Order ID", "Quantity", "Status", "Message" },
+                        "No child orders were placed");
                 }
+
+                return (object)ExcelTable.Acknowledgement(response);
             })!;
         }
 
         /// <summary>
-        /// Modifies an existing order via OpenAlgo API.
+        /// Modifies an open order.
         /// </summary>
         [ExcelFunction(
             Name = "oa_modifyorder",
-            Description = "Modifies an existing order through OpenAlgo API.")]
-        public static object[,] oa_modifyorder(
+            Description = "Modifies an existing order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_modifyorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "OrderID", Description = "ID of the order to modify")] string orderId,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
             [ExcelArgument(Name = "Action", Description = "Order action (BUY/SELL)")] string action,
-            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
-            [ExcelArgument(Name = "Quantity", Description = "Order quantity")] object? quantity = null,
-            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT)")] string priceType = "MARKET",
-            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC)")] string product = "MIS",
-            [ExcelArgument(Name = "Price", Description = "Order price (optional)")] object? price = null,
-            [ExcelArgument(Name = "TriggerPrice", Description = "Trigger price (optional)")] object? triggerPrice = null,
-            [ExcelArgument(Name = "DisclosedQuantity", Description = "Disclosed quantity (optional)")] object? disclosedQuantity = null)
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code(NSE/BSE/NFO/MCX)")] string exchange,
+            [ExcelArgument(Name = "Quantity", Description = "New order quantity")] object? quantity = null,
+            [ExcelArgument(Name = "PriceType", Description = "Price type (MARKET/LIMIT/SL/SL-M). Defaults to MARKET")] string priceType = "MARKET",
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML). Defaults to MIS")] string product = "MIS",
+            [ExcelArgument(Name = "Price", Description = "New order price, sent as 0 when omitted")] object? price = null,
+            [ExcelArgument(Name = "TriggerPrice", Description = "New trigger price, sent as 0 when omitted")] object? triggerPrice = null,
+            [ExcelArgument(Name = "DisclosedQuantity", Description = "New disclosed quantity, sent as 0 when omitted")] object? disclosedQuantity = null)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            string quantityStr = (quantity is ExcelMissing or null) ? "0" : quantity.ToString()!;
-            string priceStr = (price is ExcelMissing or null) ? "0" : price.ToString()!;
-            string triggerPriceStr = (triggerPrice is ExcelMissing or null) ? "0" : triggerPrice.ToString()!;
-            string disclosedQuantityStr = (disclosedQuantity is ExcelMissing or null) ? "0" : disclosedQuantity.ToString()!;
+            string? missing = FirstMissing(
+                ("Strategy", strategy), ("OrderID", orderId), ("Symbol", symbol),
+                ("Action", action), ("Exchange", exchange));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/modifyorder";
+            object[,]? quantityError = ReadPositiveQuantity(quantity, out double qty);
+            if (quantityError != null)
+                return quantityError;
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_modifyorder), new object[]
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["orderid"] = orderId,
-                ["symbol"] = symbol,
-                ["action"] = action,
-                ["exchange"] = exchange,
-                ["quantity"] = quantityStr,
-                ["pricetype"] = priceType,
-                ["product"] = product,
-                ["price"] = priceStr,
-                ["trigger_price"] = triggerPriceStr,
-                ["disclosed_quantity"] = disclosedQuantityStr
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_modifyorder), new object[] { }, async () =>
+                strategy, orderId, symbol, action, exchange, priceType, product,
+                Arg.Str(quantity), Arg.Str(price), Arg.Str(triggerPrice), Arg.Str(disclosedQuantity)
+            }, async () =>
             {
-                try
+                // Unlike placeorder, every field on modifyorder is mandatory. The server
+                // schema rejects the request outright if price, trigger_price or
+                // disclosed_quantity are absent, so an omitted value travels as 0.
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["orderid"] = orderId,
+                    ["symbol"] = symbol,
+                    ["action"] = action,
+                    ["exchange"] = exchange,
+                    ["quantity"] = qty,
+                    ["pricetype"] = TextOr(priceType, "MARKET"),
+                    ["product"] = TextOr(product, "MIS"),
+                    ["price"] = Arg.Num(price),
+                    ["trigger_price"] = Arg.Num(triggerPrice),
+                    ["disclosed_quantity"] = Arg.Int(disclosedQuantity)
+                };
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                var response = await OpenAlgoClient.PostAsync("modifyorder", payload);
 
-                            return new object[,]
-                            {
-                                { "Status", "Message" },
-                                { status, message }
-                            };
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                return (object)ExcelTable.Acknowledgement(response, "orderid");
             })!;
         }
 
         /// <summary>
-        /// Cancels an existing order via OpenAlgo API.
+        /// Cancels a single open order.
         /// </summary>
         [ExcelFunction(
             Name = "oa_cancelorder",
-            Description = "Cancels an existing order through OpenAlgo API.")]
-        public static object[,] oa_cancelorder(
+            Description = "Cancels an existing order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_cancelorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "OrderID", Description = "ID of the order to cancel")] string orderId)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/cancelorder";
+            string? missing = FirstMissing(("Strategy", strategy), ("OrderID", orderId));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_cancelorder), new object[] { strategy, orderId }, async () =>
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["orderid"] = orderId
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_cancelorder), new object[] { }, async () =>
-            {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["orderid"] = orderId
+                };
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
+                var response = await OpenAlgoClient.PostAsync("cancelorder", payload);
 
-                            return new object[,]
-                            {
-                        { "Status", "Message" },
-                        { status, message }
-                            };
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                return (object)ExcelTable.Acknowledgement(response, "orderid");
             })!;
         }
 
         /// <summary>
-        /// Cancels all open orders for a given strategy via OpenAlgo API.
+        /// Cancels every open order and pending trigger order for a strategy.
         /// </summary>
         [ExcelFunction(
             Name = "oa_cancelallorder",
-            Description = "Cancels all open orders for a specified strategy through OpenAlgo API.")]
-        public static object[,] oa_cancelallorder(
+            Description = "Cancels all open orders for a specified strategy through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_cancelallorder(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/cancelallorder";
+            if (string.IsNullOrWhiteSpace(strategy))
+                return ExcelTable.Error("Strategy is required.");
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_cancelallorder), new object[] { strategy }, async () =>
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy
-            };
+                var payload = new JObject { ["strategy"] = strategy };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_cancelallorder), new object[] { }, async () =>
-            {
-                try
+                var response = await OpenAlgoClient.PostAsync("cancelallorder", payload);
+
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
+
+                var rows = new List<object[]>
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    new object[] { "Status", response["status"]?.ToString() ?? "unknown", "" }
+                };
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            var canceledOrders = jsonResponse["canceled_orders"] as JArray;
-                            var failedCancellations = jsonResponse["failed_cancellations"] as JArray;
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                string message = response["message"]?.ToString() ?? "";
+                if (message.Length > 0)
+                    rows.Add(new object[] { "Message", message, "" });
 
-                            // Prepare output
-                            int rowCount = Math.Max(canceledOrders?.Count ?? 0, failedCancellations?.Count ?? 0) + 2;
-                            var output = new object[rowCount, 3];
-                            output[0, 0] = "Status";
-                            output[0, 1] = "Message";
-                            output[0, 2] = "";
-                            output[1, 0] = status;
-                            output[1, 1] = message;
-                            output[1, 2] = "";
+                var canceled = response["canceled_orders"] as JArray;
+                var failed = response["failed_cancellations"] as JArray;
 
-                            if (canceledOrders != null && canceledOrders.Count > 0)
-                            {
-                                output[1, 2] = "Canceled Orders";
-                                for (int i = 0; i < canceledOrders.Count; i++)
-                                {
-                                    output[i + 2, 2] = canceledOrders[i]?.ToString() ?? string.Empty;
-                                }
-                            }
-
-                            if (failedCancellations != null && failedCancellations.Count > 0)
-                            {
-                                output[1, 2] = "Failed Cancellations";
-                                for (int i = 0; i < failedCancellations.Count; i++)
-                                {
-                                    output[i + 2, 2] = failedCancellations[i]?.ToString() ?? string.Empty;
-                                }
-                            }
-
-                            return output;
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
+                if ((canceled?.Count ?? 0) > 0 || (failed?.Count ?? 0) > 0)
                 {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
+                    rows.Add(new object[] { "Order ID", "Result", "Reason" });
+
+                    if (canceled != null)
+                        foreach (var item in canceled)
+                            rows.Add(new object[] { ExcelTable.Cell(item), "Canceled", "" });
+
+                    // Failed cancellations arrive as objects of orderid and reason.
+                    if (failed != null)
+                        foreach (var item in failed)
+                        {
+                            var entry = item as JObject;
+                            rows.Add(new object[]
+                            {
+                                entry == null ? ExcelTable.Cell(item) : ExcelTable.Cell(entry["orderid"]),
+                                "Failed",
+                                entry == null ? "" : ExcelTable.Cell(entry["reason"])
+                            });
+                        }
                 }
+
+                return (object)ExcelTable.FromRows(rows);
             })!;
         }
 
         /// <summary>
-        /// Closes all open positions for a given strategy via OpenAlgo API.
+        /// Squares off every open position for a strategy with market orders.
         /// </summary>
         [ExcelFunction(
             Name = "oa_closeposition",
-            Description = "Closes all open positions for a specified strategy through OpenAlgo API.")]
-        public static object[,] oa_closeposition(
+            Description = "Closes all open positions for a specified strategy through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_closeposition(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
+            if (!OpenAlgoConfig.TradingEnabled)
+                return ExcelTable.Error(TradingDisabledMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/closeposition";
+            if (string.IsNullOrWhiteSpace(strategy))
+                return ExcelTable.Error("Strategy is required.");
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_closeposition), new object[] { strategy }, async () =>
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy
-            };
+                var payload = new JObject { ["strategy"] = strategy };
 
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_closeposition), new object[] { }, async () =>
-            {
-                try
-                {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                var response = await OpenAlgoClient.PostAsync("closeposition", payload);
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            var closedPositions = jsonResponse["closed_positions"] as JArray;
-                            var failedClosures = jsonResponse["failed_closures"] as JArray;
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
 
-                            // Prepare output
-                            int rowCount = Math.Max(closedPositions?.Count ?? 0, failedClosures?.Count ?? 0) + 2;
-                            var output = new object[rowCount, 3];
-                            output[0, 0] = "Status";
-                            output[0, 1] = "Message";
-                            output[0, 2] = "";
-                            output[1, 0] = status;
-                            output[1, 1] = message;
-                            output[1, 2] = "";
-
-                            if (closedPositions != null && closedPositions.Count > 0)
-                            {
-                                output[1, 2] = "Closed Positions";
-                                for (int i = 0; i < closedPositions.Count; i++)
-                                {
-                                    output[i + 2, 2] = closedPositions[i]?.ToString() ?? string.Empty;
-                                }
-                            }
-
-                            if (failedClosures != null && failedClosures.Count > 0)
-                            {
-                                output[1, 2] = "Failed Closures";
-                                for (int i = 0; i < failedClosures.Count; i++)
-                                {
-                                    output[i + 2, 2] = failedClosures[i]?.ToString() ?? string.Empty;
-                                }
-                            }
-
-                            return output;
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                return (object)ExcelTable.Acknowledgement(response);
             })!;
         }
 
         /// <summary>
-        /// Retrieves the status of a specific order via OpenAlgo API.
+        /// Reads the current status of a single order. This function does not place or
+        /// change anything, so it is not gated on the trading flag.
         /// </summary>
         [ExcelFunction(
             Name = "oa_orderstatus",
-            Description = "Retrieves the status of a specific order through OpenAlgo API.")]
-        public static object[,] oa_orderstatus(
+            Description = "Retrieves the status of a specific order through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_orderstatus(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name associated with the order")] string strategy,
             [ExcelArgument(Name = "OrderID", Description = "ID of the order to retrieve status for")] string orderId)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/orderstatus";
+            if (string.IsNullOrWhiteSpace(orderId))
+                return ExcelTable.Error("OrderID is required.");
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_orderstatus), new object[] { strategy, orderId }, async () =>
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["orderid"] = orderId
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_orderstatus), new object[] { }, async () =>
-            {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["orderid"] = orderId
+                };
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
-                            var orderDetails = jsonResponse["order_details"] as JObject;
+                var response = await OpenAlgoClient.PostAsync("orderstatus", payload);
 
-                            if (orderDetails != null)
-                            {
-                                var output = new object[orderDetails.Count + 2, 2];
-                                output[0, 0] = "Status";
-                                output[0, 1] = "Message";
-                                output[1, 0] = status;
-                                output[1, 1] = message;
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
 
-                                int row = 2;
-                                foreach (var detail in orderDetails)
-                                {
-                                    output[row, 0] = detail.Key;
-                                    output[row, 1] = detail.Value?.ToString() ?? string.Empty;
-                                    row++;
-                                }
+                // The endpoint returns the order under "data", not "order_details".
+                if (response["data"] is JObject details && details.Count > 0)
+                    return (object)ExcelTable.KeyValue(details);
 
-                                return output;
-                            }
-                            else
-                            {
-                                return new object[,] { { "Error: Order details not found." } };
-                            }
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                return (object)ExcelTable.Acknowledgement(response, "orderid");
             })!;
         }
 
         /// <summary>
-        /// Retrieves open positions for a given strategy via OpenAlgo API.
+        /// Reads the net open quantity for one symbol, exchange and product. This function
+        /// does not place or change anything, so it is not gated on the trading flag.
         /// </summary>
         [ExcelFunction(
             Name = "oa_openposition",
-            Description = "Retrieves open positions for a specified strategy through OpenAlgo API.")]
-        public static object[,] oa_openposition(
+            Description = "Retrieves the net open position quantity for a symbol through OpenAlgo API.",
+            Category = "OpenAlgo Orders")]
+        public static object oa_openposition(
             [ExcelArgument(Name = "Strategy", Description = "Trading strategy name")] string strategy,
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
-            [ExcelArgument(Name = "Exchange", Description = "Exchange code")] string exchange,
-            [ExcelArgument(Name = "Product", Description = "Product type (e.g., CNC, MIS)")] string product)
+            [ExcelArgument(Name = "Exchange", Description = "Exchange code(NSE/BSE/NFO/MCX)")] string exchange,
+            [ExcelArgument(Name = "Product", Description = "Product type (MIS/CNC/NRML)")] string product)
         {
-            if (string.IsNullOrWhiteSpace(OpenAlgoConfig.ApiKey))
-                return new object[,] { { "Error: OpenAlgo API Key is not set. Use oa_api()" } };
+            if (!OpenAlgoClient.HasApiKey)
+                return ExcelTable.Error(NoApiKeyMessage);
 
-            string endpoint = $"{OpenAlgoConfig.HostUrl}/api/{OpenAlgoConfig.Version}/openposition";
+            string? missing = FirstMissing(("Symbol", symbol), ("Exchange", exchange), ("Product", product));
+            if (missing != null)
+                return ExcelTable.Error(missing + " is required.");
 
-            var payload = new JObject
+            return AsyncTaskUtil.RunTask(nameof(oa_openposition),
+                new object[] { strategy, symbol, exchange, product }, async () =>
             {
-                ["apikey"] = OpenAlgoConfig.ApiKey,
-                ["strategy"] = strategy,
-                ["symbol"] = symbol,
-                ["exchange"] = exchange,
-                ["product"] = product
-            };
-
-            return (object[,])AsyncTaskUtil.RunTask(nameof(oa_openposition), new object[] { }, async () =>
-            {
-                try
+                var payload = new JObject
                 {
-                    using (var client = new HttpClient())
-                    {
-                        var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-                        var response = await client.PostAsync(endpoint, content);
-                        string responseBody = await response.Content.ReadAsStringAsync();
+                    ["strategy"] = strategy,
+                    ["symbol"] = symbol,
+                    ["exchange"] = exchange,
+                    ["product"] = product
+                };
 
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var jsonResponse = JObject.Parse(responseBody);
-                            string status = jsonResponse["status"]?.ToString() ?? "Unknown";
-                            string message = jsonResponse["message"]?.ToString() ?? "No message provided";
-                            var positionDetails = jsonResponse["position_details"] as JObject;
+                var response = await OpenAlgoClient.PostAsync("openposition", payload);
 
-                            if (positionDetails != null)
-                            {
-                                var output = new object[positionDetails.Count + 2, 2];
-                                output[0, 0] = "Status";
-                                output[0, 1] = "Message";
-                                output[1, 0] = status;
-                                output[1, 1] = message;
+                var error = ExcelTable.ErrorOrNull(response);
+                if (error != null) return (object)error;
 
-                                int row = 2;
-                                foreach (var detail in positionDetails)
-                                {
-                                    output[row, 0] = detail.Key;
-                                    output[row, 1] = detail.Value?.ToString() ?? string.Empty;
-                                    row++;
-                                }
+                // The endpoint answers with a bare quantity, not a "position_details"
+                // object. Hand it back as a single numeric cell so formulas can use it.
+                var quantity = response["quantity"];
+                if (quantity != null && quantity.Type != JTokenType.Null)
+                    return (object)ExcelTable.Single(ExcelTable.Cell(quantity));
 
-                                return output;
-                            }
-                            else
-                            {
-                                return new object[,] { { "Error: Position details not found." } };
-                            }
-                        }
-                        else
-                        {
-                            return new object[,] { { $"Error: {response.StatusCode} - {responseBody}" } };
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new object[,] { { $"Exception: {ex.Message}" } };
-                }
+                return (object)ExcelTable.Acknowledgement(response);
             })!;
         }
 
+        /// <summary>
+        /// Returns the name of the first required argument that the caller left blank,
+        /// or null when they are all present.
+        /// </summary>
+        private static string? FirstMissing(params (string Name, string? Value)[] required)
+        {
+            foreach (var (name, value) in required)
+                if (string.IsNullOrWhiteSpace(value))
+                    return name;
+            return null;
+        }
+
+        /// <summary>
+        /// Reads a mandatory, strictly positive quantity. Returns null when the value is
+        /// usable, otherwise the error table to show in the cell.
+        /// </summary>
+        private static object[,]? ReadPositiveQuantity(object? value, out double quantity)
+        {
+            quantity = Arg.Num(value);
+            if (Arg.IsMissing(value))
+                return ExcelTable.Error("Quantity is required.");
+            if (quantity <= 0)
+                return ExcelTable.Error("Quantity must be greater than zero.");
+            return null;
+        }
+
+        /// <summary>
+        /// Returns the trimmed text, or the fallback when the caller left it blank.
+        /// </summary>
+        private static string TextOr(string? value, string fallback) =>
+            string.IsNullOrWhiteSpace(value) ? fallback : value!.Trim();
+
+        /// <summary>
+        /// Adds a text field only when the caller supplied one, leaving the server to
+        /// apply its own default otherwise.
+        /// </summary>
+        private static void AddText(JObject payload, string field, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                payload[field] = value!.Trim();
+        }
+
+        /// <summary>
+        /// Adds a numeric field only when the caller supplied one. An omitted price is
+        /// not the same request as a price of zero.
+        /// </summary>
+        private static void AddNumber(JObject payload, string field, object? value)
+        {
+            if (!Arg.IsMissing(value))
+                payload[field] = Arg.Num(value);
+        }
+
+        /// <summary>
+        /// Adds a whole number field only when the caller supplied one.
+        /// </summary>
+        private static void AddInteger(JObject payload, string field, object? value)
+        {
+            if (!Arg.IsMissing(value))
+                payload[field] = Arg.Int(value);
+        }
+
+        /// <summary>
+        /// Turns a worksheet range of order rows into the JSON array the basketorder
+        /// endpoint expects. Returns null on success, otherwise the error table naming
+        /// the offending row.
+        /// </summary>
+        private static object[,]? BuildBasket(object[,] orders, out JArray orderList)
+        {
+            orderList = new JArray();
+
+            if (orders == null)
+                return ExcelTable.Error("Orders range is required.");
+
+            int rows = orders.GetLength(0);
+            int cols = orders.GetLength(1);
+
+            if (rows == 0 || cols < 4)
+                return ExcelTable.Error(
+                    "Orders range needs at least four columns: Symbol, Exchange, Action, Quantity.");
+
+            int start = LooksLikeHeaderRow(orders) ? 1 : 0;
+
+            for (int r = start; r < rows; r++)
+            {
+                string symbol = Arg.Str(orders[r, 0]).Trim();
+                string exchange = Arg.Str(orders[r, 1]).Trim();
+                string action = Arg.Str(orders[r, 2]).Trim();
+                object? quantity = orders[r, 3];
+
+                bool blank = symbol.Length == 0 && exchange.Length == 0
+                             && action.Length == 0 && Arg.IsMissing(quantity);
+                if (blank)
+                    continue;
+
+                int line = r + 1;
+                string? missing = FirstMissing(
+                    ("Symbol", symbol), ("Exchange", exchange), ("Action", action));
+                if (missing != null)
+                    return ExcelTable.Error($"Basket row {line}: {missing} is required.");
+                if (Arg.IsMissing(quantity))
+                    return ExcelTable.Error($"Basket row {line}: Quantity is required.");
+
+                double qty = Arg.Num(quantity);
+                if (qty <= 0)
+                    return ExcelTable.Error($"Basket row {line}: Quantity must be greater than zero.");
+
+                var order = new JObject
+                {
+                    ["symbol"] = symbol,
+                    ["exchange"] = exchange,
+                    ["action"] = action,
+                    ["quantity"] = qty
+                };
+
+                if (cols > 4) AddText(order, "pricetype", Arg.Str(orders[r, 4]));
+                if (cols > 5) AddText(order, "product", Arg.Str(orders[r, 5]));
+                if (cols > 6) AddNumber(order, "price", orders[r, 6]);
+                if (cols > 7) AddNumber(order, "trigger_price", orders[r, 7]);
+                if (cols > 8) AddInteger(order, "disclosed_quantity", orders[r, 8]);
+
+                orderList.Add(order);
+            }
+
+            if (orderList.Count == 0)
+                return ExcelTable.Error("Orders range contains no order rows.");
+
+            return null;
+        }
+
+        /// <summary>
+        /// True when the first row of the range holds column captions rather than an order.
+        /// </summary>
+        private static bool LooksLikeHeaderRow(object[,] orders)
+        {
+            if (orders.GetLength(0) < 2)
+                return false;
+
+            string first = Arg.Str(orders[0, 0]).Trim();
+            string third = Arg.Str(orders[0, 2]).Trim();
+            string fourth = Arg.Str(orders[0, 3]).Trim();
+
+            return first.Equals("symbol", StringComparison.OrdinalIgnoreCase)
+                || third.Equals("action", StringComparison.OrdinalIgnoreCase)
+                || fourth.Equals("quantity", StringComparison.OrdinalIgnoreCase)
+                || fourth.Equals("qty", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Builds a stable identity string for a range argument so that two cells calling
+        /// the same function with different ranges do not share one cached async result.
+        /// </summary>
+        private static string RangeKey(object[,]? grid)
+        {
+            if (grid == null)
+                return "";
+
+            int rows = grid.GetLength(0);
+            int cols = grid.GetLength(1);
+
+            var parts = new List<string>(rows * cols + 1) { rows + "x" + cols };
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    parts.Add(Arg.Str(grid[r, c]));
+
+            return string.Join("|", parts);
+        }
     }
 }
