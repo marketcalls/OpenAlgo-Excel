@@ -4,7 +4,7 @@
 
 OpenAlgo is an Excel Add-In that provides seamless integration with the OpenAlgo API for algorithmic trading. This add-in allows users to fetch market data, resolve symbols, analyse option chains and Greeks, place and manage orders, retrieve historical data, and stream real-time market data directly from Excel.
 
-The add-in exposes **91 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
+The add-in exposes **82 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
 
 ## Features
 
@@ -17,7 +17,7 @@ The add-in exposes **91 worksheet functions** covering **55 of the 57 registered
 - **Risk Management**: Close all open positions for a strategy, and an explicit trading arm switch.
 - **Analyzer Mode**: Toggle between sandbox simulation and live trading, with sandbox P&L per symbol.
 - **Market Calendar**: Holidays, trading session timings, and a holiday check.
-- **Messaging**: WhatsApp notifications and the full Telegram management surface.
+- **Messaging**: WhatsApp and Telegram notifications.
 - **WebSocket Streaming**: Real-time LTP, Quote, Depth, and order updates pushed to individual cells via RTD.
 - **Persistent Configuration**: API key and settings are saved to disk and auto-loaded on Excel restart.
 
@@ -871,33 +871,29 @@ Sends a WhatsApp text, image, or document to yourself, a linked username, one ph
 
 ### Telegram
 
-All ten API-key Telegram endpoints are wrapped.
+**Function:** `oa_telegram(username, message, [wait_for_delivery], [priority])`
 
-| Function                                                  | Purpose                                          |
-| --------------------------------------------------------- | ------------------------------------------------ |
-| `oa_telegram_config()`                                     | Read bot configuration, token masked by server   |
-| `oa_telegram_config_set(settings_or_key, [value])`         | Update settings from a key/value range or a pair |
-| `oa_telegram_start()`                                      | Start the bot in polling or webhook mode         |
-| `oa_telegram_stop()`                                       | Stop the bot service                             |
-| `oa_telegram_users([broker], [notifications_enabled])`     | List linked users                                |
-| `oa_telegram_notify(username, message, [wait], [priority])`| Send to one linked user                          |
-| `oa_telegram_broadcast(message, [filters])`                | Broadcast to linked users                        |
-| `oa_telegram_stats([days])`                                | Command statistics, 1 to 365 days, default 7     |
-| `oa_telegram_preferences(telegram_id)`                     | Read one user's notification preferences         |
-| `oa_telegram_preferences_set(telegram_id, key, value)`     | Update one preference                            |
+Sends a Telegram message to one linked OpenAlgo user. Mirrors `client.telegram(username=..., message=...)` in the Python SDK.
 
-Two server behaviours worth knowing:
+| Parameter           | Required | Description                                                              |
+| ------------------- | -------- | ------------------------------------------------------------------------ |
+| `username`          | Yes      | OpenAlgo username already linked to a Telegram ID                        |
+| `message`           | Yes      | Message text, max 4096 characters                                        |
+| `wait_for_delivery` | No       | TRUE to attempt delivery immediately instead of queueing                 |
+| `priority`          | No       | 1 to 10                                                                   |
 
-- **`oa_telegram_notify` returns queued, not delivered.** By default the call returns as soon as the message is queued. Pass TRUE to `wait_for_delivery` to attempt immediate delivery.
-- **`oa_telegram_broadcast` reports zero deliveries.** The server validates the request but its dispatch is not implemented yet, so it answers with zero delivered and zero failed. That zero is the server's behaviour, not an add-in fault.
-
-Rate limits: 30 calls per minute for most Telegram resources, 5 per minute for broadcast.
-
-> `POST /telegram/webhook` is deliberately not wrapped. It is called inbound by Telegram's servers and authenticates with the `X-Telegram-Bot-Api-Secret-Token` header rather than an OpenAlgo key. Reach it with `oa_request` if you must.
+> By default the call returns as soon as the message is **queued**, so success means queued, not delivered. Pass TRUE to `wait_for_delivery` to attempt it immediately. Limit 30 calls per minute.
 
 ```
-=oa_telegram_notify("rajan", "NIFTY position opened")
-=oa_telegram_stats(30)
+=oa_telegram("rajan", "NIFTY crossed 26000")
+=oa_telegram("rajan", "Position opened", TRUE)
+```
+
+The Telegram management endpoints (bot config, start, stop, linked users, broadcast, stats, per-user preferences) are deliberately **not** wrapped, matching the SDK, which exposes only the notification call. Reach them with `oa_request` when needed:
+
+```
+=oa_request("GET", "telegram/stats")
+=oa_request("POST", "telegram/start")
 ```
 
 ---
@@ -1155,7 +1151,7 @@ Start any troubleshooting with `=oa_version()` and `=oa_ping()`.
 | Analyzer           | `oa_analyzerstatus`, `oa_analyzertoggle`, `oa_pnl_symbols`                                                                                                                                                                   |
 | Calendar           | `oa_holidays`, `oa_timings`, `oa_isholiday`                                                                                                                                                                             |
 | Chart              | `oa_chart`, `oa_chart_set`                                                                                                                                                                                              |
-| Messaging          | `oa_whatsapp`, `oa_telegram_config`, `oa_telegram_config_set`, `oa_telegram_start`, `oa_telegram_stop`, `oa_telegram_users`, `oa_telegram_notify`, `oa_telegram_broadcast`, `oa_telegram_stats`, `oa_telegram_preferences`, `oa_telegram_preferences_set` |
+| Messaging          | `oa_whatsapp`, `oa_telegram`                                                                                                                                                                                         |
 | WebSocket          | `oa_ws_connect`, `oa_ws_disconnect`, `oa_ws_status`, `oa_ws_ping`, `oa_ws_brokers`, `oa_ws_brokerinfo`, `oa_ws_ltp`, `oa_ws_quote`, `oa_ws_depth`, `oa_ws_field`, `oa_ws_orders`, `oa_ws_throttle`, `oa_rtd_interval`, `oa_ws_subscribe`, `oa_ws_subscribe_ltp`, `oa_ws_subscribe_quote`, `oa_ws_subscribe_depth`, `oa_ws_unsubscribe`, `oa_ws_unsubscribe_ltp`, `oa_ws_unsubscribe_quote`, `oa_ws_unsubscribe_depth`, `oa_ws_unsubscribe_orders`, `oa_ws_unsubscribe_all`, `oa_ws_subscriptions`, `oa_ws_debug` |
 
 ---

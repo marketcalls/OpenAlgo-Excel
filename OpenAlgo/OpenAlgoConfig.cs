@@ -9,7 +9,7 @@ namespace OpenAlgo
         /// <summary>
         /// Version reported in the User-Agent header and by oa_version().
         /// </summary>
-        public const string AddInVersion = "1.0.6";
+        public const string AddInVersion = "1.0.7";
 
         public static string ApiKey { get; set; } = "";
         public static string Version { get; set; } = "v1";

@@ -15,9 +15,9 @@
 #ifndef PayloadDir
   #define PayloadDir SourcePath + "OpenAlgo\bin\Release\net8.0-windows\publish"
 #endif
-#define AppVersionText "1.0.6"
+#define AppVersionText "1.0.7"
 
-; OpenAlgo Excel Add-In with WebSocket Support v1.0.6
+; OpenAlgo Excel Add-In with WebSocket Support v1.0.7
 ;
 ; Features:
 ; - Real-time market data streaming via WebSockets (LTP, Quote, Depth, order updates)
@@ -32,6 +32,26 @@
 ; - Non-blocking auto-subscribe to prevent Excel calculation thread deadlocks
 ; - Order safety switch: oa_trading_enabled() must arm order functions
 ; - Shared HTTP client with a configurable timeout, replacing per-call sockets
+;
+; Version 1.0.7 Changelog (2026-08-20):
+; - Fixed: the add-in registered every public static method as a worksheet
+;   function, because Excel-DNA defaults ExplicitExports to false. Internal
+;   helpers were exported into Excel's global namespace as Apply, Read, Error,
+;   Single, Rows, Cell, Date, Int, Str, Save and Load, and the overloaded ones
+;   collided, producing "Repeated function name: 'Apply'" in the add-in
+;   diagnostics. A project .dna file now sets ExplicitExports=true.
+; - Fixed: four function descriptions exceeded Excel's 255 character limit and
+;   were reported as truncated at registration.
+; - Changed: order functions no longer need arming. oa_trading_enabled is an
+;   optional guard that now defaults to on.
+; - Changed: the function surface tracks the OpenAlgo Python SDK so the two are
+;   learned once. oa_analyzer is now oa_analyzerstatus, oa_analyzer_toggle is
+;   oa_analyzertoggle, oa_whatsapp_notify is oa_whatsapp, and the ten Telegram
+;   management functions are replaced by a single oa_telegram(username, message)
+;   matching client.telegram(). The management endpoints remain reachable
+;   through oa_request.
+; - Added: oa_ws_subscribe_ltp, oa_ws_subscribe_quote and oa_ws_subscribe_depth,
+;   matching the SDK's subscribe_ltp/quote/depth and the existing unsubscribe set.
 ;
 ; Version 1.0.6 Changelog (2026-08-20):
 ; - Fixed: streaming updated roughly once every two seconds instead of following
