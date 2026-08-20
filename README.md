@@ -23,45 +23,6 @@ The add-in exposes **89 worksheet functions** covering **55 of the 57 registered
 
 ---
 
-## What Changed in 1.0.5
-
-### Excel no longer refreshes continuously (GitHub issue #4)
-
-Earlier versions ran a 100 ms timer that called `Application.Calculate()` up to 20 times a second, and marked the streaming functions volatile. That forced an application-wide recalculation of every volatile formula in every open workbook, permanently. Because `Application.Calculate()` also cancels Excel's cut and copy clipboard mode, **copy-paste stopped working** while the WebSocket was connected.
-
-Streaming now uses Excel-DNA RTD push (`ExcelAsyncUtil.Observe`): each streaming cell is its own topic and updates only when that symbol ticks. There is no timer, no volatile function, and nothing calls `Application.Calculate()`. Excel stays responsive and copy-paste behaves normally.
-
-Update rate is controlled with [`oa_ws_throttle()`](#update-rate).
-
-### Streaming now updates in real time
-
-Excel applies its own throttle to every RTD server, `Application.RTD.ThrottleInterval`, and it ships at **2000 ms**. Left alone, that caps a streaming cell at one repaint every two seconds regardless of how fast the feed is. Broker feeds run at roughly 1 to 11 updates per second, so Excel's default was discarding most of them and live prices looked stalled.
-
-The add-in now sets that interval to 0 on load and again on `oa_ws_connect()`, and pushes every tick by default. Both limits are adjustable: `oa_rtd_interval()` for Excel's, `oa_ws_throttle()` for the add-in's. See [Update Rate](#update-rate).
-
-### Order functions must be armed
-
-A worksheet function re-evaluates whenever the sheet recalculates, so an order formula sitting in a cell could silently re-place an order. Order, GTT, and options-order functions now refuse to send until you call:
-
-```
-=oa_trading_enabled(TRUE)
-```
-
-The switch lasts for the current Excel session only. See [Trading Arm Switch](#trading-arm-switch).
-
-### Other notable fixes
-
-- `oa_orderstatus` and `oa_openposition` read response keys the API never returns and had **always** failed. Both now work.
-- Every function shared a single cached async result across all cells regardless of arguments. Each call is now keyed on its own arguments.
-- Cells showed `#VALUE!` while a request was in flight; they now show `#N/A`.
-- Server error messages reach the sheet instead of rendering as `Unknown`.
-- `oa_history` handles both Unix-epoch and ISO-8601 timestamps, and reads volume as a 64-bit value (it previously overflowed above 2.1 billion).
-- `oa_depth` no longer discards `open`, `high`, `low`, `prev_close`, `ltq`, `oi`, `totalbuyqty`, and `totalsellqty`. `oa_positionbook` no longer drops `ltp` and `pnl`.
-- Order IDs, instrument tokens, BSE scrip codes, and phone numbers stay as text instead of being converted to numbers and displayed in scientific notation.
-- Every REST call previously created a new `HttpClient` with no timeout, leaking a socket per call. All calls now share one client with a configurable timeout.
-
----
-
 ## Prerequisites
 
 - .NET 8.0 Desktop Runtime installed
