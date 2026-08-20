@@ -31,7 +31,7 @@ Earlier versions ran a 100 ms timer that called `Application.Calculate()` up to 
 
 Streaming now uses Excel-DNA RTD push (`ExcelAsyncUtil.Observe`): each streaming cell is its own topic and updates only when that symbol ticks. There is no timer, no volatile function, and nothing calls `Application.Calculate()`. Excel stays responsive and copy-paste behaves normally.
 
-Update rate is controlled with [`oa_ws_throttle()`](#oa_ws_throttle).
+Update rate is controlled with [`oa_ws_throttle()`](#update-rate).
 
 ### Order functions must be armed
 
