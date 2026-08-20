@@ -65,7 +65,7 @@ After installing the runtime, restart your system and try loading the add-in aga
 
 ### Setting API Key, Version, and Host URL
 
-**Function:** `oa_api(api_key, [version], [host_url])`
+**Function:** `oa_api(APIKey, [APIVersion], [HostURL])`
 
 This function must be called once to configure the API connection. The configuration is **persisted to disk** at `%LOCALAPPDATA%\OpenAlgo\config.json`, so you only need to call it once. On subsequent Excel sessions, the saved API key is automatically loaded.
 
@@ -75,7 +75,7 @@ All other functions use these stored credentials.
 | ---------- | -------- | ------------------------- | -------------------------- |
 | `api_key`  | Yes      | -                         | API key for authentication |
 | `version`  | No       | `"v1"`                    | API version                |
-| `host_url` | No       | `"http://127.0.0.1:5000"` | OpenAlgo server URL        |
+| `HostURL` | No       | `"http://127.0.0.1:5000"` | OpenAlgo server URL        |
 
 ```
 =oa_api("your_api_key")
@@ -110,7 +110,7 @@ Verifies the API key resolves to an active broker session and names the broker. 
 
 ### Trading Safety Switch (optional)
 
-**Function:** `oa_trading_enabled([enable])`
+**Function:** `oa_trading_enabled([Enable])`
 
 Order functions work out of the box, so nothing needs to be enabled before placing an order. This switch is an **optional** guard you can turn on if you want it.
 
@@ -130,11 +130,11 @@ Functions it controls: `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, 
 
 ### Generic Endpoint Access
 
-**Function:** `oa_request(method, path, [json_body])`
+**Function:** `oa_request(Method, Path, [JSONBody])`
 
 Raw call to any OpenAlgo endpoint, returning the JSON response in a single cell. The API key is added for you: do not put `apikey` in the body.
 
-**Function:** `oa_json(json_text, path)`
+**Function:** `oa_json(JSONText, Path)`
 
 Pulls a value out of JSON text with a JSONPath expression. Objects and arrays come back as compact JSON, scalars as numbers, booleans, or text.
 
@@ -222,16 +222,16 @@ Portfolio totals: current market value, invested value, total P&L, and total P&L
 
 ### Calculate Pre-Trade Margin
 
-**Function:** `oa_margin(positions, [exchange], [product], [price_type])`
+**Function:** `oa_margin(Positions, [Exchange], [Product], [PriceType])`
 
 Pre-trade margin for a basket of up to 50 positions, including hedging benefit. Reads the basket from a range and returns total margin required, SPAN, exposure, and margin benefit.
 
 | Parameter    | Required | Description                                                        |
 | ------------ | -------- | ------------------------------------------------------------------ |
-| `positions`  | Yes      | Range of positions. With a header row, columns are matched by name |
-| `exchange`   | No       | Default exchange applied to rows that do not specify one           |
-| `product`    | No       | Default product                                                     |
-| `price_type` | No       | Default price type                                                  |
+| `Positions`  | Yes      | Range of positions. With a header row, columns are matched by name |
+| `Exchange`   | No       | Default exchange applied to rows that do not specify one           |
+| `Product`    | No       | Default product                                                     |
+| `PriceType` | No       | Default price type                                                  |
 
 ```
 =oa_margin(A2:E5)
@@ -244,7 +244,7 @@ Pre-trade margin for a basket of up to 50 positions, including hedging benefit. 
 
 ### Get Last Traded Price
 
-**Function:** `oa_ltp(symbol, exchange)`
+**Function:** `oa_ltp(Symbol, Exchange)`
 
 Last traded price as a single number. This is the most convenient function for building a watchlist column.
 
@@ -256,7 +256,7 @@ Last traded price as a single number. This is the most convenient function for b
 
 ### Get a Single Quote Field
 
-**Function:** `oa_field(symbol, exchange, field)`
+**Function:** `oa_field(Symbol, Exchange, Field)`
 
 One named field of a market quote as a single value. Parallels the streaming `oa_ws_field`.
 
@@ -271,7 +271,7 @@ Supported fields: `ltp`, `open`, `high`, `low`, `prev_close`, `bid`, `ask`, `vol
 
 ### Get Market Quotes
 
-**Function:** `oa_quotes(symbol, exchange)`
+**Function:** `oa_quotes(Symbol, Exchange)`
 
 Full market quote for a symbol as a key/value table, including computed Change and Change %.
 
@@ -283,14 +283,14 @@ Full market quote for a symbol as a key/value table, including computed Change a
 
 ### Get Quotes for Multiple Symbols
 
-**Function:** `oa_multiquotes(symbols, [default_exchange])`
+**Function:** `oa_multiquotes(Symbols, DefaultExchange)`
 
 Quotes for a range of symbols, one row per symbol. Far more efficient than one `oa_quotes` call per symbol.
 
 | Parameter          | Required | Description                                                                    |
 | ------------------ | -------- | ------------------------------------------------------------------------------ |
-| `symbols`          | Yes      | Range: one column of symbols, or two columns of symbol and exchange            |
-| `default_exchange` | No       | Exchange applied when the range has no exchange column (default `NSE`)         |
+| `Symbols`          | Yes      | Range: one column of symbols, or two columns of symbol and exchange            |
+| `DefaultExchange` | No       | Exchange applied when the range has no exchange column (default `NSE`)         |
 
 Returns Symbol, Exchange, LTP, Open, High, Low, Prev Close, Change, Change %, Bid, Ask, OI, Volume, and an Error column for symbols the server could not resolve.
 
@@ -304,7 +304,7 @@ Returns Symbol, Exchange, LTP, Open, High, Low, Prev Close, Change, Change %, Bi
 
 ### Get Market Depth
 
-**Function:** `oa_depth(symbol, exchange)`
+**Function:** `oa_depth(Symbol, Exchange)`
 
 Order book depth with the day summary. Returns the five-level bid and ask ladder plus LTP, Volume, Open, High, Low, Prev Close, LTQ, OI, Total Buy Qty, and Total Sell Qty.
 
@@ -316,16 +316,16 @@ Order book depth with the day summary. Returns the five-level bid and ask ladder
 
 ### Fetch Historical Data
 
-**Function:** `oa_history(symbol, exchange, interval, start_date, end_date, [source])`
+**Function:** `oa_history(Symbol, Exchange, Interval, StartDate, EndDate, [Source])`
 
 | Parameter    | Required | Description                                                             |
 | ------------ | -------- | ----------------------------------------------------------------------- |
-| `symbol`     | Yes      | Trading symbol                                                          |
-| `exchange`   | Yes      | Exchange                                                                |
-| `interval`   | Yes      | Candle interval, for example `"1m"`, `"5m"`, `"15m"`, `"D"`             |
-| `start_date` | Yes      | Start date, `YYYY-MM-DD` or a real Excel date cell                      |
-| `end_date`   | Yes      | End date, `YYYY-MM-DD` or a real Excel date cell                        |
-| `source`     | No       | `"api"` for the broker (default) or `"db"` for Historify stored data    |
+| `Symbol`     | Yes      | Trading symbol                                                          |
+| `Exchange`   | Yes      | Exchange                                                                |
+| `Interval`   | Yes      | Candle interval, for example `"1m"`, `"5m"`, `"15m"`, `"D"`             |
+| `StartDate` | Yes      | Start date, `YYYY-MM-DD` or a real Excel date cell                      |
+| `EndDate`   | Yes      | End date, `YYYY-MM-DD` or a real Excel date cell                        |
+| `Source`     | No       | `"api"` for the broker (default) or `"db"` for Historify stored data    |
 
 Returns a table with Ticker, Date (a real Excel date serial), Time (IST), Open, High, Low, Close, Volume, and OI when the payload carries it.
 
@@ -352,7 +352,7 @@ Candle intervals supported by the connected broker, grouped by category.
 
 ### Get Symbol Metadata
 
-**Function:** `oa_symbol(symbol, exchange)`
+**Function:** `oa_symbol(Symbol, Exchange)`
 
 Instrument metadata: name, broker symbol, instrument type, expiry, strike, lot size, tick size, freeze quantity, and token.
 
@@ -364,9 +364,9 @@ Instrument metadata: name, broker symbol, instrument type, expiry, strike, lot s
 
 ### Get Lot Size and Token
 
-**Function:** `oa_lotsize(symbol, exchange)` returns the lot size as a single number, which is what you need when sizing an F&O order from a sheet.
+**Function:** `oa_lotsize(Symbol, Exchange)` returns the lot size as a single number, which is what you need when sizing an F&O order from a sheet.
 
-**Function:** `oa_token(symbol, exchange)` returns the broker instrument token as text.
+**Function:** `oa_token(Symbol, Exchange)` returns the broker instrument token as text.
 
 ```
 =oa_lotsize("NIFTY25AUG26FUT", "NFO")
@@ -377,7 +377,7 @@ Instrument metadata: name, broker symbol, instrument type, expiry, strike, lot s
 
 ### Search Instruments
 
-**Function:** `oa_search(query, [exchange])`
+**Function:** `oa_search(Query, [Exchange])`
 
 Searches instruments by name, strike, month, or option type. The tradable symbol is the first column so another formula can reference it directly.
 
@@ -394,14 +394,14 @@ This is the fastest way to find the correct OpenAlgo symbol format for an F&O co
 
 ### Get Expiry Dates
 
-**Function:** `oa_expiry(symbol, exchange, instrument_type, [expiry_type])`
+**Function:** `oa_expiry(Symbol, Exchange, InstrumentType, [ExpiryType])`
 
 | Parameter         | Required | Description                                                          |
 | ----------------- | -------- | -------------------------------------------------------------------- |
-| `symbol`          | Yes      | Underlying symbol, for example `NIFTY`                               |
-| `exchange`        | Yes      | F&O exchange: `NFO`, `BFO`, `MCX`, `CDS`, `CRYPTO`                   |
-| `instrument_type` | Yes      | `"futures"` or `"options"`                                            |
-| `expiry_type`     | No       | `"monthly"`, `"weekly"`, or `"all"`. Applied locally, see note below |
+| `Symbol`          | Yes      | Underlying symbol, for example `NIFTY`                               |
+| `Exchange`        | Yes      | F&O exchange: `NFO`, `BFO`, `MCX`, `CDS`, `CRYPTO`                   |
+| `InstrumentType` | Yes      | `"futures"` or `"options"`                                            |
+| `ExpiryType`     | No       | `"monthly"`, `"weekly"`, or `"all"`. Applied locally, see note below |
 
 Returns Expiry (in the `DD-MMM-YY` form the API expects back), Date (an Excel serial), and Type.
 
@@ -418,16 +418,16 @@ Returns Expiry (in the `DD-MMM-YY` form the API expects back), Date (an Excel se
 
 ### Option Chain
 
-**Function:** `oa_optionchain(underlying, exchange, expiry, [strike_count], [with_greeks], [interest_rate])`
+**Function:** `oa_optionchain(Underlying, Exchange, Expiry, [StrikeCount], [WithGreeks], [InterestRate])`
 
 | Parameter       | Required | Description                                                                  |
 | --------------- | -------- | ---------------------------------------------------------------------------- |
-| `underlying`    | Yes      | Underlying symbol, for example `NIFTY`, `BANKNIFTY`, `SENSEX`                |
-| `exchange`      | Yes      | Underlying exchange: `NSE_INDEX` or `BSE_INDEX`                              |
-| `expiry`        | Yes      | Expiry in `DDMMMYY` format, for example `25AUG26`                            |
-| `strike_count`  | No       | Strikes above and below ATM, 1 to 100. Default is all strikes                 |
-| `with_greeks`   | No       | TRUE to attach IV and Greeks to every leg. Default TRUE, costs no extra call  |
-| `interest_rate` | No       | Risk-free rate as an annualised percent, Greeks only. Default 0               |
+| `Underlying`    | Yes      | Underlying symbol, for example `NIFTY`, `BANKNIFTY`, `SENSEX`                |
+| `Exchange`      | Yes      | Underlying exchange: `NSE_INDEX` or `BSE_INDEX`                              |
+| `Expiry`        | Yes      | Expiry in `DDMMMYY` format, for example `25AUG26`                            |
+| `StrikeCount`  | No       | Strikes above and below ATM, 1 to 100. Default is all strikes                 |
+| `WithGreeks`   | No       | TRUE to attach IV and Greeks to every leg. Default TRUE, costs no extra call  |
+| `InterestRate` | No       | Risk-free rate as an annualised percent, Greeks only. Default 0               |
 
 **Layout:** row 1 carries the context (Underlying, Spot, Prev Close, ATM Strike, Expiry, Forward, Strike count). Row 2 carries column headers. From row 3, one row per strike, laid out **calls on the left, strike in the centre, puts on the right**, mirrored around the strike so the ladder reads outward from the money.
 
@@ -443,7 +443,7 @@ Per side: LTP, Bid, Bid Qty, Ask, Ask Qty, IV, Delta, Gamma, Theta, Vega, Volume
 
 ### Option Greeks
 
-**Function:** `oa_optiongreeks(symbol, exchange, [interest_rate], [expiry_time], [underlying_symbol], [underlying_exchange], [forward_price])`
+**Function:** `oa_optiongreeks(Symbol, Exchange, [InterestRate], [ExpiryTime], [UnderlyingSymbol], [UnderlyingExchange], [ForwardPrice])`
 
 Black-76 Greeks and implied volatility for one option. Returns IV plus delta, gamma, theta, vega, and rho.
 
@@ -456,7 +456,7 @@ Black-76 Greeks and implied volatility for one option. Returns IV plus delta, ga
 
 ### Batch Option Greeks
 
-**Function:** `oa_multioptiongreeks(symbols, [interest_rate], [expiry_time])`
+**Function:** `oa_multioptiongreeks(Symbols, [InterestRate], [ExpiryTime])`
 
 Greeks and IV for up to 50 options in one call.
 
@@ -475,7 +475,7 @@ Row 1 is the batch summary (Total, Success, Failed). Then one row per contract: 
 
 ### Resolve an Option Symbol
 
-**Function:** `oa_optionsymbol(underlying, exchange, expiry, strike_offset, option_type)`
+**Function:** `oa_optionsymbol(Underlying, Exchange, Expiry, StrikeOffset, OptionType)`
 
 Resolves an option trading symbol from underlying, expiry, and strike offset. `strike_offset` is `ATM`, `ITM1` to `ITM50`, or `OTM1` to `OTM50`. `option_type` is `CE` or `PE`.
 
@@ -490,7 +490,7 @@ The resolved symbol is the first data row, so `INDEX(range, 2, 2)` feeds it into
 
 ### Synthetic Future
 
-**Function:** `oa_syntheticfuture(underlying, exchange, expiry)`
+**Function:** `oa_syntheticfuture(Underlying, Exchange, Expiry)`
 
 Synthetic futures price for an expiry, derived from ATM options using put-call parity. Also reports the Basis (synthetic minus spot).
 
@@ -502,25 +502,25 @@ Synthetic futures price for an expiry, derived from ATM options using put-call p
 
 ### Place an Option Order
 
-**Function:** `oa_optionsorder(strategy, underlying, exchange, expiry, strike_offset, option_type, action, quantity, [pricetype], [product], [price], [trigger_price], [split_size])`
+**Function:** `oa_optionsorder(Strategy, Underlying, Exchange, Expiry, StrikeOffset, OptionType, Action, Quantity, [PriceType], [Product], [Price], [TriggerPrice], [SplitSize])`
 
 Places an option order by strike offset rather than by resolved symbol.
 
 | Parameter       | Required | Default  | Description                                        |
 | --------------- | -------- | -------- | -------------------------------------------------- |
-| `strategy`      | Yes      | -        | Strategy identifier recorded against the order     |
-| `underlying`    | Yes      | -        | Underlying symbol                                  |
-| `exchange`      | Yes      | -        | `NSE_INDEX`, `BSE_INDEX`, `NFO`, or `BFO`          |
-| `expiry`        | Yes      | -        | Expiry in `DDMMMYY` format                         |
-| `strike_offset` | Yes      | -        | `ATM`, `ITM1` to `ITM50`, `OTM1` to `OTM50`        |
-| `option_type`   | Yes      | -        | `CE` or `PE`                                        |
-| `action`        | Yes      | -        | `BUY` or `SELL`                                     |
-| `quantity`      | Yes      | -        | Quantity in units, not lots                        |
-| `pricetype`     | No       | `MARKET` | `MARKET`, `LIMIT`, `SL`, `SL-M`                    |
-| `product`       | No       | `MIS`    | `MIS` or `NRML`                                     |
-| `price`         | No       | 0        | Limit price for `LIMIT` and `SL`                   |
-| `trigger_price` | No       | 0        | Trigger price for `SL` and `SL-M`                  |
-| `split_size`    | No       | 0        | Split into chunks of this size, 0 for no split     |
+| `Strategy`      | Yes      | -        | Strategy identifier recorded against the order     |
+| `Underlying`    | Yes      | -        | Underlying symbol                                  |
+| `Exchange`      | Yes      | -        | `NSE_INDEX`, `BSE_INDEX`, `NFO`, or `BFO`          |
+| `Expiry`        | Yes      | -        | Expiry in `DDMMMYY` format                         |
+| `StrikeOffset` | Yes      | -        | `ATM`, `ITM1` to `ITM50`, `OTM1` to `OTM50`        |
+| `OptionType`   | Yes      | -        | `CE` or `PE`                                        |
+| `Action`        | Yes      | -        | `BUY` or `SELL`                                     |
+| `Quantity`      | Yes      | -        | Quantity in units, not lots                        |
+| `PriceType`     | No       | `MARKET` | `MARKET`, `LIMIT`, `SL`, `SL-M`                    |
+| `Product`       | No       | `MIS`    | `MIS` or `NRML`                                     |
+| `Price`         | No       | 0        | Limit price for `LIMIT` and `SL`                   |
+| `TriggerPrice` | No       | 0        | Trigger price for `SL` and `SL-M`                  |
+| `SplitSize`    | No       | 0        | Split into chunks of this size, 0 for no split     |
 
 ```
 =oa_optionsorder("MyStrategy", "NIFTY", "NSE_INDEX", "25AUG26", "ATM", "CE", "BUY", 75)
@@ -530,7 +530,7 @@ Places an option order by strike offset rather than by resolved symbol.
 
 ### Place a Multi-Leg Option Strategy
 
-**Function:** `oa_optionsmultiorder(strategy, underlying, exchange, expiry, legs)`
+**Function:** `oa_optionsmultiorder(Strategy, Underlying, Exchange, Expiry, Legs)`
 
 Places a multi-leg option strategy from a table of legs (1 to 20).
 
@@ -555,20 +555,20 @@ Example sheet layout for a short strangle:
 
 ### Place an Order
 
-**Function:** `oa_placeorder(strategy, symbol, action, exchange, pricetype, product, [quantity], [price], [trigger_price], [disclosed_quantity])`
+**Function:** `oa_placeorder(Strategy, Symbol, Action, Exchange, PriceType, Product, [Quantity], [Price], [TriggerPrice], [DisclosedQuantity])`
 
 | Parameter            | Required | Description                        |
 | -------------------- | -------- | ---------------------------------- |
-| `strategy`           | Yes      | Trading strategy name              |
-| `symbol`             | Yes      | Trading symbol                     |
-| `action`             | Yes      | `BUY` or `SELL`                    |
-| `exchange`           | Yes      | Exchange code                      |
-| `pricetype`          | Yes      | `MARKET`, `LIMIT`, `SL`, `SL-M`    |
-| `product`            | Yes      | `MIS`, `CNC`, `NRML`               |
-| `quantity`           | No       | Order quantity                     |
-| `price`              | No       | Limit price                        |
-| `trigger_price`      | No       | Trigger price                      |
-| `disclosed_quantity` | No       | Disclosed quantity                 |
+| `Strategy`           | Yes      | Trading strategy name              |
+| `Symbol`             | Yes      | Trading symbol                     |
+| `Action`             | Yes      | `BUY` or `SELL`                    |
+| `Exchange`           | Yes      | Exchange code                      |
+| `PriceType`          | Yes      | `MARKET`, `LIMIT`, `SL`, `SL-M`    |
+| `Product`            | Yes      | `MIS`, `CNC`, `NRML`               |
+| `Quantity`           | No       | Order quantity                     |
+| `Price`              | No       | Limit price                        |
+| `TriggerPrice`      | No       | Trigger price                      |
+| `DisclosedQuantity` | No       | Disclosed quantity                 |
 
 Returns a Status / Order ID / Message table.
 
@@ -580,7 +580,7 @@ Returns a Status / Order ID / Message table.
 
 ### Place a Smart Order
 
-**Function:** `oa_placesmartorder(strategy, symbol, action, exchange, pricetype, product, [quantity], [position_size], [price], [trigger_price], [disclosed_quantity])`
+**Function:** `oa_placesmartorder(Strategy, Symbol, Action, Exchange, PriceType, Product, [Quantity], [PositionSize], [Price], [TriggerPrice], [DisclosedQuantity])`
 
 Places an order that targets a desired net position size rather than a raw quantity.
 
@@ -592,7 +592,7 @@ Places an order that targets a desired net position size rather than a raw quant
 
 ### Place a Basket Order
 
-**Function:** `oa_basketorder(strategy, orders)`
+**Function:** `oa_basketorder(Strategy, Orders)`
 
 Places several orders in one call from a range. A header row is detected and skipped.
 
@@ -608,7 +608,7 @@ Returns one row per leg: Symbol, Status, Order ID, Message.
 
 ### Place a Split Order
 
-**Function:** `oa_splitorder(strategy, symbol, action, exchange, [quantity], [split_size], pricetype, product, [price], [trigger_price], [disclosed_quantity])`
+**Function:** `oa_splitorder(Strategy, Symbol, Action, Exchange, [Quantity], [SplitSize], PriceType, Product, [Price], [TriggerPrice], [DisclosedQuantity])`
 
 Splits a large quantity into chunks. Returns one row per child order: Order Num, Order ID, Quantity, Status, Message.
 
@@ -620,7 +620,7 @@ Splits a large quantity into chunks. Returns one row per child order: Order Num,
 
 ### Modify an Order
 
-**Function:** `oa_modifyorder(strategy, orderid, symbol, action, exchange, [quantity], pricetype, product, [price], [trigger_price], [disclosed_quantity])`
+**Function:** `oa_modifyorder(Strategy, OrderID, Symbol, Action, Exchange, [Quantity], PriceType, Product, [Price], [TriggerPrice], [DisclosedQuantity])`
 
 > The server schema marks `price`, `quantity`, `trigger_price`, `disclosed_quantity`, `pricetype`, and `product` as required for a modify, so all of them are sent even when left blank.
 
@@ -632,7 +632,7 @@ Splits a large quantity into chunks. Returns one row per child order: Order Num,
 
 ### Cancel an Order
 
-**Function:** `oa_cancelorder(strategy, orderid)`
+**Function:** `oa_cancelorder(Strategy, OrderID)`
 
 ```
 =oa_cancelorder("MyStrategy", "250820000012345")
@@ -642,7 +642,7 @@ Splits a large quantity into chunks. Returns one row per child order: Order Num,
 
 ### Cancel All Orders
 
-**Function:** `oa_cancelallorder(strategy)`
+**Function:** `oa_cancelallorder(Strategy)`
 
 Cancels all open orders for a strategy. Returns Order ID, Result, and Reason rows so failed cancellations are visible.
 
@@ -654,7 +654,7 @@ Cancels all open orders for a strategy. Returns Order ID, Result, and Reason row
 
 ### Close All Open Positions
 
-**Function:** `oa_closeposition(strategy)`
+**Function:** `oa_closeposition(Strategy)`
 
 ```
 =oa_closeposition("MyStrategy")
@@ -664,7 +664,7 @@ Cancels all open orders for a strategy. Returns Order ID, Result, and Reason row
 
 ### Get Order Status
 
-**Function:** `oa_orderstatus(strategy, orderid)`
+**Function:** `oa_orderstatus(Strategy, OrderID)`
 
 Returns the full order record as a key/value table.
 
@@ -676,7 +676,7 @@ Returns the full order record as a key/value table.
 
 ### Get Open Position
 
-**Function:** `oa_openposition(strategy, symbol, exchange, product)`
+**Function:** `oa_openposition(Strategy, Symbol, Exchange, Product)`
 
 Returns the net open position quantity as a single number, so it can feed a formula directly.
 
@@ -692,7 +692,7 @@ Good Till Triggered orders rest at the broker until their trigger fires. Both `S
 
 ### Place a GTT Order
 
-**Function:** `oa_placegttorder(strategy, symbol, exchange, action, product, trigger_type, quantity, [pricetype], [price], [trigger_price_sl], [trigger_price_tg], [stoploss], [target])`
+**Function:** `oa_placegttorder(Strategy, Symbol, Exchange, Action, Product, TriggerType, Quantity, [PriceType], [Price], [TriggerPriceSL], [TriggerPriceTG], [StopLoss], [Target])`
 
 | Trigger type | Fields to supply                                                          |
 | ------------ | ------------------------------------------------------------------------- |
@@ -710,17 +710,25 @@ For `OCO`, `trigger_price_sl` must be below `trigger_price_tg`. Validation happe
 
 ### Modify a GTT Order
 
-**Function:** `oa_modifygttorder(strategy, trigger_id, symbol, exchange, action, product, trigger_type, quantity, [pricetype], [price], [trigger_price_sl], [trigger_price_tg], [stoploss], [target])`
+**Function:** `oa_modifygttorder(Strategy, TriggerID, Symbol, Exchange, Action, Product, TriggerType, Quantity, [PriceType], [Price], [TriggerPriceSL], [TriggerPriceTG], [StopLoss], [Target])`
 
 > A modify replaces the whole trigger, so send every field you want to keep.
+
+```
+=oa_modifygttorder("MyStrategy", "12345678", "RELIANCE", "NSE", "SELL", "CNC", "SINGLE", 10, "LIMIT", 1320, , 1320)
+```
 
 ---
 
 ### Cancel a GTT Order
 
-**Function:** `oa_cancelgttorder(strategy, trigger_id)`
+**Function:** `oa_cancelgttorder(Strategy, TriggerID)`
 
 Cancelling an OCO removes both legs.
+
+```
+=oa_cancelgttorder("MyStrategy", "12345678")
+```
 
 ---
 
@@ -754,7 +762,7 @@ Reports whether orders are simulated or sent live, and how many orders the analy
 
 ### Toggle Analyzer Mode
 
-**Function:** `oa_analyzertoggle(mode)`
+**Function:** `oa_analyzertoggle(Mode)`
 
 Accepts TRUE/FALSE or `"analyze"`/`"live"`. The returned table states the resulting mode in its first row.
 
@@ -783,7 +791,7 @@ Sandbox P&L per symbol with realised, unrealised, and today totals. Analyzer mod
 
 ### Market Holidays
 
-**Function:** `oa_holidays([year], [exchange])`
+**Function:** `oa_holidays([Year], [Exchange])`
 
 Market holidays for a year: date, description, holiday type, the exchanges that are closed, and any special sessions. Times shown in IST.
 
@@ -796,7 +804,7 @@ Market holidays for a year: date, description, holiday type, the exchanges that 
 
 ### Trading Timings
 
-**Function:** `oa_timings([date])`
+**Function:** `oa_timings([Date])`
 
 Trading sessions for a date, one row per exchange, with IST start and end times. Defaults to today. An empty schedule means the market is closed that day.
 
@@ -809,7 +817,7 @@ Trading sessions for a date, one row per exchange, with IST start and end times.
 
 ### Holiday Check
 
-**Function:** `oa_isholiday(date, [exchange])`
+**Function:** `oa_isholiday(Date, [Exchange])`
 
 Returns TRUE when the market is closed on the date.
 
@@ -826,7 +834,7 @@ Returns TRUE when the market is closed on the date.
 
 **Function:** `oa_chart()` reads the chart workspace preferences stored for this API key. The first column holds the exact preference key, so it can be fed straight back into `oa_chart_set`.
 
-**Function:** `oa_chart_set(key, value)` updates one preference. A value that parses as JSON is sent as JSON, anything else as text. Keys are limited to 50 characters.
+**Function:** `oa_chart_set(Key, Value)` updates one preference. A value that parses as JSON is sent as JSON, anything else as text. Keys are limited to 50 characters.
 
 ```
 =oa_chart()
@@ -840,20 +848,20 @@ Returns TRUE when the market is closed on the date.
 
 ### WhatsApp
 
-**Function:** `oa_whatsapp([message], [recipient], [recipient_type], [image_path], [document_path], [caption], [filename], [wait_for_delivery])`
+**Function:** `oa_whatsapp([Message], [Recipient], [RecipientType], [ImagePath], [DocumentPath], [Caption], [Filename], [WaitForDelivery])`
 
 Sends a WhatsApp text, image, or document to yourself, a linked username, one phone number, or up to 5.
 
 | Parameter           | Required | Description                                                                  |
 | ------------------- | -------- | ---------------------------------------------------------------------------- |
-| `message`           | No*      | Text body, max 4096 characters                                               |
-| `recipient`         | No       | Username, phone number, or a range of up to 5 phone numbers                  |
-| `recipient_type`    | No       | `self`, `username`, `phone`, or `phones`. Inferred when omitted              |
-| `image_path`        | No       | Server-local path to an image                                                 |
-| `document_path`     | No       | Server-local path to a document                                               |
-| `caption`           | No       | Caption for the image                                                         |
-| `filename`          | No       | Override the document's display name                                          |
-| `wait_for_delivery` | No       | TRUE to block and return a per-recipient delivery report                     |
+| `Message`           | No*      | Text body, max 4096 characters                                               |
+| `Recipient`         | No       | Username, phone number, or a range of up to 5 phone numbers                  |
+| `RecipientType`    | No       | `self`, `username`, `phone`, or `phones`. Inferred when omitted              |
+| `ImagePath`        | No       | Server-local path to an image                                                 |
+| `DocumentPath`     | No       | Server-local path to a document                                               |
+| `Caption`           | No       | Caption for the image                                                         |
+| `Filename`          | No       | Override the document's display name                                          |
+| `WaitForDelivery` | No       | TRUE to block and return a per-recipient delivery report                     |
 
 \* `message` is optional only when `image_path` or `document_path` is supplied.
 
@@ -871,16 +879,16 @@ Sends a WhatsApp text, image, or document to yourself, a linked username, one ph
 
 ### Telegram
 
-**Function:** `oa_telegram(username, message, [wait_for_delivery], [priority])`
+**Function:** `oa_telegram(Username, Message, [WaitForDelivery], [Priority])`
 
 Sends a Telegram message to one linked OpenAlgo user. Mirrors `client.telegram(username=..., message=...)` in the Python SDK.
 
 | Parameter           | Required | Description                                                              |
 | ------------------- | -------- | ------------------------------------------------------------------------ |
-| `username`          | Yes      | OpenAlgo username already linked to a Telegram ID                        |
-| `message`           | Yes      | Message text, max 4096 characters                                        |
-| `wait_for_delivery` | No       | TRUE to attempt delivery immediately instead of queueing                 |
-| `priority`          | No       | 1 to 10                                                                   |
+| `Username`          | Yes      | OpenAlgo username already linked to a Telegram ID                        |
+| `Message`           | Yes      | Message text, max 4096 characters                                        |
+| `WaitForDelivery` | No       | TRUE to attempt delivery immediately instead of queueing                 |
+| `Priority`          | No       | 1 to 10                                                                   |
 
 > By default the call returns as soon as the message is **queued**, so success means queued, not delivered. Pass TRUE to `wait_for_delivery` to attempt it immediately. Limit 30 calls per minute.
 
@@ -910,7 +918,7 @@ The data functions **auto-subscribe**: just type the formula and the subscriptio
 
 #### Connect to WebSocket
 
-**Function:** `oa_ws_connect([websocket_url])`
+**Function:** `oa_ws_connect([WebSocketURL])`
 
 Connects and authenticates using the API key set with `oa_api()`. The URL defaults to the saved value (`ws://127.0.0.1:8765`) and any URL you pass is persisted.
 
@@ -927,15 +935,25 @@ Subscriptions are restored automatically after a reconnect.
 
 Unsubscribes everything and closes the connection.
 
+```
+=oa_ws_disconnect()
+```
+
 #### Connection Status
 
-**Function:** `oa_ws_status()` returns the current connection state.
+| Function | Returns |
+| --- | --- |
+| `oa_ws_status()` | The current connection state |
+| `oa_ws_ping()` | Round trip to the server in milliseconds |
+| `oa_ws_brokers()` | Brokers supported by the connected server |
+| `oa_ws_brokerinfo()` | Broker and adapter status for the authenticated session |
 
-**Function:** `oa_ws_ping()` pings the server and reports the round trip in milliseconds.
-
-**Function:** `oa_ws_brokers()` lists brokers supported by the connected server.
-
-**Function:** `oa_ws_brokerinfo()` shows the broker and adapter status for the authenticated session.
+```
+=oa_ws_status()
+=oa_ws_ping()
+=oa_ws_brokers()
+=oa_ws_brokerinfo()
+```
 
 ---
 
@@ -943,7 +961,7 @@ Unsubscribes everything and closes the connection.
 
 #### LTP
 
-**Function:** `oa_ws_ltp(symbol, exchange)`
+**Function:** `oa_ws_ltp(Symbol, Exchange)`
 
 Streams the last traded price as a single number.
 
@@ -953,7 +971,7 @@ Streams the last traded price as a single number.
 
 #### Quote
 
-**Function:** `oa_ws_quote(symbol, exchange)`
+**Function:** `oa_ws_quote(Symbol, Exchange)`
 
 Streams the full quote as a two-column key/value table.
 
@@ -963,7 +981,7 @@ Streams the full quote as a two-column key/value table.
 
 #### Depth
 
-**Function:** `oa_ws_depth(symbol, exchange, [depth_level])`
+**Function:** `oa_ws_depth(Symbol, Exchange, [DepthLevel])`
 
 Streams the order book as a seven-column table: Bid Orders, Bid Qty, Bid Price, LTP, Ask Price, Ask Qty, Ask Orders.
 
@@ -974,7 +992,7 @@ Streams the order book as a seven-column table: Bid Orders, Bid Qty, Bid Price, 
 
 #### Single Field
 
-**Function:** `oa_ws_field(symbol, exchange, field, [mode])`
+**Function:** `oa_ws_field(Symbol, Exchange, Field, [Mode])`
 
 Streams one named field as a single value. `mode` defaults to 2 (Quote).
 
@@ -985,11 +1003,15 @@ Streams one named field as a single value. `mode` defaults to 2 (Quote).
 
 #### Order Updates
 
-**Function:** `oa_ws_orders([max_rows])`
+**Function:** `oa_ws_orders([MaxRows])`
 
 Streams real-time order updates for the account as a table, newest first. Buffered up to 200 entries.
 
 **Function:** `oa_ws_unsubscribe_orders()` stops the stream.
+
+```
+=oa_ws_unsubscribe_orders()
+```
 
 ```
 =oa_ws_orders()
@@ -1009,7 +1031,7 @@ There are **two independent throttles** between a tick arriving and a cell chang
 
 #### Excel's RTD interval
 
-**Function:** `oa_rtd_interval([milliseconds])`
+**Function:** `oa_rtd_interval([Milliseconds])`
 
 Excel applies its own limit, `Application.RTD.ThrottleInterval`, to every RTD server. It ships at **2000 ms**, so a streaming cell repaints only once every two seconds no matter how fast data arrives. Broker feeds run at roughly 1 to 11 updates per second, so Excel's default discards most of them and live data looks frozen.
 
@@ -1026,7 +1048,7 @@ This is a per-user Excel setting, not a workbook setting, and Excel persists it.
 
 #### The add-in's own throttle
 
-**Function:** `oa_ws_throttle([milliseconds])`
+**Function:** `oa_ws_throttle([Milliseconds])`
 
 Sets the minimum gap between two pushed updates for one streaming cell. Omit the argument to read the current value. The setting is persisted.
 
@@ -1046,7 +1068,7 @@ Leave it at 0 for real-time behaviour. Raise it only if a very large sheet on a 
 
 #### Subscribe Manually
 
-**Function:** `oa_ws_subscribe(symbol, exchange, mode, [depth_level])`
+**Function:** `oa_ws_subscribe(Symbol, Exchange, Mode, [DepthLevel])`
 
 ```
 =oa_ws_subscribe("RELIANCE", "NSE", 1)
@@ -1061,6 +1083,12 @@ Per-mode shorthands matching the Python SDK's `subscribe_ltp`, `subscribe_quote`
 | `oa_ws_subscribe_quote(symbol, exchange)` | `oa_ws_subscribe(..., 2)` |
 | `oa_ws_subscribe_depth(symbol, exchange, [depth_level])` | `oa_ws_subscribe(..., 3)` |
 
+```
+=oa_ws_subscribe_ltp("RELIANCE", "NSE")
+=oa_ws_subscribe_quote("RELIANCE", "NSE")
+=oa_ws_subscribe_depth("RELIANCE", "NSE", 20)
+```
+
 #### Unsubscribe
 
 | Function                                      | Purpose                     |
@@ -1071,17 +1099,33 @@ Per-mode shorthands matching the Python SDK's `subscribe_ltp`, `subscribe_quote`
 | `oa_ws_unsubscribe_depth(symbol, exchange)`    | Depth only                  |
 | `oa_ws_unsubscribe_all()`                      | Everything                  |
 
+```
+=oa_ws_unsubscribe("RELIANCE", "NSE", 1)
+=oa_ws_unsubscribe_ltp("RELIANCE", "NSE")
+=oa_ws_unsubscribe_quote("RELIANCE", "NSE")
+=oa_ws_unsubscribe_depth("RELIANCE", "NSE")
+=oa_ws_unsubscribe_all()
+```
+
 After a manual unsubscribe the cell shows `Unsubscribed` and does **not** auto-resubscribe.
 
 #### View Active Subscriptions
 
 **Function:** `oa_ws_subscriptions()`
 
+```
+=oa_ws_subscriptions()
+```
+
 #### Debug
 
-**Function:** `oa_ws_debug(symbol, exchange, mode)`
+**Function:** `oa_ws_debug(Symbol, Exchange, Mode)`
 
 Shows subscription status and cached data keys.
+
+```
+=oa_ws_debug("RELIANCE", "NSE", 1)
+```
 
 ---
 
