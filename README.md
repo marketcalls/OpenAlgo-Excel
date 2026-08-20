@@ -863,7 +863,7 @@ Sends a WhatsApp text, image, or document to yourself, a linked username, one ph
 | `Filename`          | No       | Override the document's display name                                          |
 | `WaitForDelivery` | No       | TRUE to block and return a per-recipient delivery report                     |
 
-\* `message` is optional only when `image_path` or `document_path` is supplied.
+\* `Message` is optional only when `ImagePath` or `DocumentPath` is supplied.
 
 > Exactly one recipient form is required; combining them is not supported. Attachments are read from the **OpenAlgo server's filesystem**, never uploaded from Excel, and must sit inside the directories listed in `WHATSAPP_ATTACHMENT_ROOTS`. The 5-recipient cap is a terms-of-service guardrail. Limit 30 calls per minute.
 >
@@ -890,7 +890,7 @@ Sends a Telegram message to one linked OpenAlgo user. Mirrors `client.telegram(u
 | `WaitForDelivery` | No       | TRUE to attempt delivery immediately instead of queueing                 |
 | `Priority`          | No       | 1 to 10                                                                   |
 
-> By default the call returns as soon as the message is **queued**, so success means queued, not delivered. Pass TRUE to `wait_for_delivery` to attempt it immediately. Limit 30 calls per minute.
+> By default the call returns as soon as the message is **queued**, so success means queued, not delivered. Pass TRUE to `WaitForDelivery` to attempt it immediately. Limit 30 calls per minute.
 
 ```
 =oa_telegram("rajan", "NIFTY crossed 26000")
