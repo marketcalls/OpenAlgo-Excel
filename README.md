@@ -252,15 +252,15 @@ Last traded price as a single number. This is the most convenient function for b
 
 ### Get a Single Quote Field
 
-**Function:** `oa_quote(symbol, exchange, field)`
+**Function:** `oa_field(symbol, exchange, field)`
 
-One named field of a market quote as a single value.
+One named field of a market quote as a single value. Named `oa_field` rather than `oa_quote` so it cannot be confused with `oa_quotes` in Excel's formula autocomplete, and to parallel the streaming `oa_ws_field`.
 
 Supported fields: `ltp`, `open`, `high`, `low`, `prev_close`, `bid`, `ask`, `volume`, `oi`, plus the computed `change` and `changepct`.
 
 ```
-=oa_quote("RELIANCE", "NSE", "high")
-=oa_quote("RELIANCE", "NSE", "changepct")
+=oa_field("RELIANCE", "NSE", "high")
+=oa_field("RELIANCE", "NSE", "changepct")
 ```
 
 ---
@@ -1154,7 +1154,7 @@ Start any troubleshooting with `=oa_version()` and `=oa_ping()`.
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Configuration      | `oa_api`, `oa_version`, `oa_ping`, `oa_trading_enabled`, `oa_request`, `oa_json`                                                                                                                                        |
 | Account            | `oa_funds`, `oa_orderbook`, `oa_orderbook_stats`, `oa_tradebook`, `oa_positionbook`, `oa_holdings`, `oa_holdings_stats`, `oa_margin`                                                                                    |
-| Market Data        | `oa_ltp`, `oa_quote`, `oa_quotes`, `oa_multiquotes`, `oa_depth`, `oa_history`, `oa_intervals`                                                                                                                           |
+| Market Data        | `oa_ltp`, `oa_field`, `oa_quotes`, `oa_multiquotes`, `oa_depth`, `oa_history`, `oa_intervals`                                                                                                                           |
 | Symbols            | `oa_symbol`, `oa_search`, `oa_expiry`, `oa_instruments`, `oa_lotsize`, `oa_token`                                                                                                                                       |
 | Options            | `oa_optionchain`, `oa_optiongreeks`, `oa_multioptiongreeks`, `oa_optionsymbol`, `oa_syntheticfuture`, `oa_optionsorder`, `oa_optionsmultiorder`                                                                         |
 | Orders             | `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, `oa_splitorder`, `oa_modifyorder`, `oa_cancelorder`, `oa_cancelallorder`, `oa_closeposition`, `oa_orderstatus`, `oa_openposition`                              |

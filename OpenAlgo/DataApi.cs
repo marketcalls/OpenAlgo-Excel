@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -103,8 +103,8 @@ namespace OpenAlgo
         /// Retrieves one named field of a quote as a single value.
         /// Accepts the fields the API returns plus the derived change and changepct.
         /// </summary>
-        [ExcelFunction(Name = "oa_quote", Description = "One named field of a market quote as a single value.", Category = "OpenAlgo Data")]
-        public static object oa_quote(
+        [ExcelFunction(Name = "oa_field", Description = "One named field of a market quote as a single value.", Category = "OpenAlgo Data")]
+        public static object oa_field(
             [ExcelArgument(Name = "Symbol", Description = "Trading symbol, for example RELIANCE")] string symbol,
             [ExcelArgument(Name = "Exchange", Description = "Exchange code: NSE, BSE, NFO, BFO, CDS, BCD, MCX")] string exchange,
             [ExcelArgument(Name = "Field", Description = "ltp, open, high, low, prev_close, bid, ask, volume, oi, change or changepct")] string field)
@@ -118,7 +118,7 @@ namespace OpenAlgo
 
             string wanted = NormaliseField(field);
 
-            return AsyncTaskUtil.RunTask(nameof(oa_quote), new object[] { symbol, exchange, wanted }, async () =>
+            return AsyncTaskUtil.RunTask(nameof(oa_field), new object[] { symbol, exchange, wanted }, async () =>
             {
                 var payload = new JObject { ["symbol"] = symbol, ["exchange"] = exchange };
                 var response = await OpenAlgoClient.PostAsync("quotes", payload);
