@@ -4,7 +4,7 @@
 
 OpenAlgo is an Excel Add-In that provides seamless integration with the OpenAlgo API for algorithmic trading. This add-in allows users to fetch market data, resolve symbols, analyse option chains and Greeks, place and manage orders, retrieve historical data, and stream real-time market data directly from Excel.
 
-The add-in exposes **88 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
+The add-in exposes **91 worksheet functions** covering **55 of the 57 registered OpenAlgo v1 REST method/path pairs**, plus the full WebSocket streaming protocol.
 
 ## Features
 
@@ -108,19 +108,23 @@ Verifies the API key resolves to an active broker session and names the broker. 
 
 ---
 
-### Trading Arm Switch
+### Trading Safety Switch (optional)
 
 **Function:** `oa_trading_enabled([enable])`
 
-Reads the trading arm switch, or sets it when passed TRUE or FALSE. Order functions refuse to send while it is FALSE, which stops a recalculation from re-placing orders. The setting lives for the current Excel session only.
+Order functions work out of the box, so nothing needs to be enabled before placing an order. This switch is an **optional** guard you can turn on if you want it.
+
+A worksheet formula re-evaluates whenever the sheet recalculates, so an order formula sitting in a cell can fire again on a full rebuild (Ctrl+Alt+F9). Setting the switch to FALSE makes every order function refuse to send until you set it back.
 
 ```
 =oa_trading_enabled()        Read the current state
-=oa_trading_enabled(TRUE)    Arm order functions
-=oa_trading_enabled(FALSE)   Disarm
+=oa_trading_enabled(FALSE)   Block order functions from sending
+=oa_trading_enabled(TRUE)    Allow them again (the default)
 ```
 
-Functions gated by this switch: `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, `oa_splitorder`, `oa_modifyorder`, `oa_cancelorder`, `oa_cancelallorder`, `oa_closeposition`, `oa_placegttorder`, `oa_modifygttorder`, `oa_cancelgttorder`, `oa_optionsorder`, `oa_optionsmultiorder`.
+The setting lives for the current Excel session only and is not saved.
+
+Functions it controls: `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, `oa_splitorder`, `oa_modifyorder`, `oa_cancelorder`, `oa_cancelallorder`, `oa_closeposition`, `oa_placegttorder`, `oa_modifygttorder`, `oa_cancelgttorder`, `oa_optionsorder`, `oa_optionsmultiorder`.
 
 ---
 
@@ -500,7 +504,7 @@ Synthetic futures price for an expiry, derived from ATM options using put-call p
 
 **Function:** `oa_optionsorder(strategy, underlying, exchange, expiry, strike_offset, option_type, action, quantity, [pricetype], [product], [price], [trigger_price], [split_size])`
 
-Places an option order by strike offset rather than by resolved symbol. Requires `oa_trading_enabled(TRUE)`.
+Places an option order by strike offset rather than by resolved symbol.
 
 | Parameter       | Required | Default  | Description                                        |
 | --------------- | -------- | -------- | -------------------------------------------------- |
@@ -528,7 +532,7 @@ Places an option order by strike offset rather than by resolved symbol. Requires
 
 **Function:** `oa_optionsmultiorder(strategy, underlying, exchange, expiry, legs)`
 
-Places a multi-leg option strategy from a table of legs (1 to 20). Requires `oa_trading_enabled(TRUE)`.
+Places a multi-leg option strategy from a table of legs (1 to 20).
 
 The `legs` range needs a header row. Recognised columns: `Offset`, `Option Type`, `Action`, `Quantity` (required), and optionally `Expiry`, `PriceType`, `Product`, `SplitSize`, `Price`, `TriggerPrice`. Annotation columns such as `Leg`, `Notes`, and `Remarks` are ignored.
 
@@ -548,8 +552,6 @@ Example sheet layout for a short strangle:
 ---
 
 ## Order Functions
-
-> All order functions require `oa_trading_enabled(TRUE)` first.
 
 ### Place an Order
 
@@ -688,8 +690,6 @@ Returns the net open position quantity as a single number, so it can feed a form
 
 Good Till Triggered orders rest at the broker until their trigger fires. Both `SINGLE` and `OCO` trigger types are supported.
 
-> All GTT mutating functions require `oa_trading_enabled(TRUE)` first.
-
 ### Place a GTT Order
 
 **Function:** `oa_placegttorder(strategy, symbol, exchange, action, product, trigger_type, quantity, [pricetype], [price], [trigger_price_sl], [trigger_price_tg], [stoploss], [target])`
@@ -742,27 +742,27 @@ Analyzer mode simulates orders in a sandbox instead of sending them to the broke
 
 ### Get Analyzer Status
 
-**Function:** `oa_analyzer()`
+**Function:** `oa_analyzerstatus()`
 
 Reports whether orders are simulated or sent live, and how many orders the analyzer has logged.
 
 ```
-=oa_analyzer()
+=oa_analyzerstatus()
 ```
 
 ---
 
 ### Toggle Analyzer Mode
 
-**Function:** `oa_analyzer_toggle(mode)`
+**Function:** `oa_analyzertoggle(mode)`
 
 Accepts TRUE/FALSE or `"analyze"`/`"live"`. The returned table states the resulting mode in its first row.
 
 > **Warning:** switching to live means every order function sends real orders to the broker.
 
 ```
-=oa_analyzer_toggle(TRUE)      Sandbox
-=oa_analyzer_toggle("live")    Live trading
+=oa_analyzertoggle(TRUE)      Sandbox
+=oa_analyzertoggle("live")    Live trading
 ```
 
 ---
@@ -840,7 +840,7 @@ Returns TRUE when the market is closed on the date.
 
 ### WhatsApp
 
-**Function:** `oa_whatsapp_notify([message], [recipient], [recipient_type], [image_path], [document_path], [caption], [filename], [wait_for_delivery])`
+**Function:** `oa_whatsapp([message], [recipient], [recipient_type], [image_path], [document_path], [caption], [filename], [wait_for_delivery])`
 
 Sends a WhatsApp text, image, or document to yourself, a linked username, one phone number, or up to 5.
 
@@ -862,9 +862,9 @@ Sends a WhatsApp text, image, or document to yourself, a linked username, one ph
 > `POST /whatsapp/notify` is the entire public WhatsApp REST surface. Pairing, start/stop, config, users, broadcast, stats, and preferences are admin-only behind the web session cookie and are deliberately not reachable with an API key.
 
 ```
-=oa_whatsapp_notify("Strategy armed", , "self")
-=oa_whatsapp_notify("Order filled", "919876543210", "phone")
-=oa_whatsapp_notify("EOD chart", "rajan", "username", "/srv/charts/nifty.png")
+=oa_whatsapp("Strategy armed", , "self")
+=oa_whatsapp("Order filled", "919876543210", "phone")
+=oa_whatsapp("EOD chart", "rajan", "username", "/srv/charts/nifty.png")
 ```
 
 ---
@@ -1057,6 +1057,14 @@ Leave it at 0 for real-time behaviour. Raise it only if a very large sheet on a 
 =oa_ws_subscribe("RELIANCE", "NSE", 3, 20)
 ```
 
+Per-mode shorthands matching the Python SDK's `subscribe_ltp`, `subscribe_quote` and `subscribe_depth`:
+
+| Function | Equivalent to |
+| --- | --- |
+| `oa_ws_subscribe_ltp(symbol, exchange)` | `oa_ws_subscribe(..., 1)` |
+| `oa_ws_subscribe_quote(symbol, exchange)` | `oa_ws_subscribe(..., 2)` |
+| `oa_ws_subscribe_depth(symbol, exchange, [depth_level])` | `oa_ws_subscribe(..., 3)` |
+
 #### Unsubscribe
 
 | Function                                      | Purpose                     |
@@ -1121,7 +1129,7 @@ Start any troubleshooting with `=oa_version()` and `=oa_ping()`.
 ## Notes
 
 - All functions require `oa_api()` to be configured first. The key is persisted, so this is normally a one-time step.
-- **Order functions require `oa_trading_enabled(TRUE)`.** This is deliberate: a worksheet formula re-evaluates on recalculation and would otherwise re-place orders.
+- Order functions send as soon as they are called. `oa_trading_enabled(FALSE)` is an optional guard against a recalculation re-placing an order.
 - Streaming functions (`oa_ws_ltp`, `oa_ws_quote`, `oa_ws_depth`, `oa_ws_field`, `oa_ws_orders`) update by RTD push. They are **not** volatile and do not trigger workbook recalculation.
 - If streaming looks frozen, check `oa_rtd_interval()`. Excel caps RTD collection at 2000 ms by default; the add-in lowers it to 0, but a policy or another add-in can raise it again.
 - **REST functions cache their result.** Excel-DNA keys the async result on the function name plus its arguments, so a function such as `oa_funds()` fetches once and keeps returning the same value. Press **Ctrl+Alt+F9** to force a full rebuild and refetch, or edit the formula.
@@ -1144,11 +1152,11 @@ Start any troubleshooting with `=oa_version()` and `=oa_ping()`.
 | Options            | `oa_optionchain`, `oa_optiongreeks`, `oa_multioptiongreeks`, `oa_optionsymbol`, `oa_syntheticfuture`, `oa_optionsorder`, `oa_optionsmultiorder`                                                                         |
 | Orders             | `oa_placeorder`, `oa_placesmartorder`, `oa_basketorder`, `oa_splitorder`, `oa_modifyorder`, `oa_cancelorder`, `oa_cancelallorder`, `oa_closeposition`, `oa_orderstatus`, `oa_openposition`                              |
 | GTT                | `oa_placegttorder`, `oa_modifygttorder`, `oa_cancelgttorder`, `oa_gttorderbook`                                                                                                                                         |
-| Analyzer           | `oa_analyzer`, `oa_analyzer_toggle`, `oa_pnl_symbols`                                                                                                                                                                   |
+| Analyzer           | `oa_analyzerstatus`, `oa_analyzertoggle`, `oa_pnl_symbols`                                                                                                                                                                   |
 | Calendar           | `oa_holidays`, `oa_timings`, `oa_isholiday`                                                                                                                                                                             |
 | Chart              | `oa_chart`, `oa_chart_set`                                                                                                                                                                                              |
-| Messaging          | `oa_whatsapp_notify`, `oa_telegram_config`, `oa_telegram_config_set`, `oa_telegram_start`, `oa_telegram_stop`, `oa_telegram_users`, `oa_telegram_notify`, `oa_telegram_broadcast`, `oa_telegram_stats`, `oa_telegram_preferences`, `oa_telegram_preferences_set` |
-| WebSocket          | `oa_ws_connect`, `oa_ws_disconnect`, `oa_ws_status`, `oa_ws_ping`, `oa_ws_brokers`, `oa_ws_brokerinfo`, `oa_ws_ltp`, `oa_ws_quote`, `oa_ws_depth`, `oa_ws_field`, `oa_ws_orders`, `oa_ws_throttle`, `oa_rtd_interval`, `oa_ws_subscribe`, `oa_ws_unsubscribe`, `oa_ws_unsubscribe_ltp`, `oa_ws_unsubscribe_quote`, `oa_ws_unsubscribe_depth`, `oa_ws_unsubscribe_orders`, `oa_ws_unsubscribe_all`, `oa_ws_subscriptions`, `oa_ws_debug` |
+| Messaging          | `oa_whatsapp`, `oa_telegram_config`, `oa_telegram_config_set`, `oa_telegram_start`, `oa_telegram_stop`, `oa_telegram_users`, `oa_telegram_notify`, `oa_telegram_broadcast`, `oa_telegram_stats`, `oa_telegram_preferences`, `oa_telegram_preferences_set` |
+| WebSocket          | `oa_ws_connect`, `oa_ws_disconnect`, `oa_ws_status`, `oa_ws_ping`, `oa_ws_brokers`, `oa_ws_brokerinfo`, `oa_ws_ltp`, `oa_ws_quote`, `oa_ws_depth`, `oa_ws_field`, `oa_ws_orders`, `oa_ws_throttle`, `oa_rtd_interval`, `oa_ws_subscribe`, `oa_ws_subscribe_ltp`, `oa_ws_subscribe_quote`, `oa_ws_subscribe_depth`, `oa_ws_unsubscribe`, `oa_ws_unsubscribe_ltp`, `oa_ws_unsubscribe_quote`, `oa_ws_unsubscribe_depth`, `oa_ws_unsubscribe_orders`, `oa_ws_unsubscribe_all`, `oa_ws_subscriptions`, `oa_ws_debug` |
 
 ---
 
@@ -1165,4 +1173,4 @@ For issues, feature requests, or contributions, open an issue or pull request on
 
 ## Disclaimer
 
-This add-in is provided as is. Trading in financial markets carries risk. Test every strategy in analyzer mode with `oa_analyzer_toggle(TRUE)` before arming live trading. You are responsible for orders placed through this add-in.
+This add-in is provided as is. Trading in financial markets carries risk. Test every strategy in analyzer mode with `oa_analyzertoggle(TRUE)` before arming live trading. You are responsible for orders placed through this add-in.

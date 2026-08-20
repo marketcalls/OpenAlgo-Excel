@@ -73,6 +73,22 @@
 ; - Fixed: option chain, batch Greeks and options order tables rendered order
 ;   ids through the value converter without a field name, so a 15 digit id
 ;   displayed as 2.40123E+14.
+; - Fixed: the add-in registered every public static method as a worksheet
+;   function, because Excel-DNA defaults ExplicitExports to false. That put
+;   internal helpers into Excel's global namespace under names such as Apply,
+;   Read, Error, Single, Rows, Cell, Date, Int, Str, Save and Load, and the
+;   overloaded ones collided, producing "Repeated function name: 'Apply'" in
+;   the add-in diagnostics. A project .dna file now sets ExplicitExports=true,
+;   so only the oa_* functions are registered.
+; - Fixed: four function descriptions exceeded Excel's 255 character limit and
+;   were reported as truncated at registration.
+; - Changed: order functions no longer need arming. oa_trading_enabled is now an
+;   optional guard that defaults to on.
+; - Renamed to match the OpenAlgo Python SDK: oa_analyzer is now
+;   oa_analyzerstatus, oa_analyzer_toggle is oa_analyzertoggle and
+;   oa_whatsapp_notify is oa_whatsapp.
+; - Added: oa_ws_subscribe_ltp, oa_ws_subscribe_quote and oa_ws_subscribe_depth,
+;   matching the SDK's subscribe_ltp/quote/depth and the existing unsubscribe set.
 ; - Removed: oa_instruments. The server cannot serve the instrument master:
 ;   its handler passes exchange=None to a schema that does not allow null, so
 ;   the all-exchanges call always returns HTTP 400. Use oa_search instead.

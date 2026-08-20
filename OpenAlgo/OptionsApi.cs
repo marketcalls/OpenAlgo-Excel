@@ -28,7 +28,7 @@ namespace OpenAlgo
 
         private const string NoApiKey = "OpenAlgo API Key is not set. Use oa_api()";
         private const string TradingDisabledMessage =
-            "Trading is disabled. Call oa_trading_enabled(TRUE) to arm order functions.";
+            "Trading is switched off. Call oa_trading_enabled(TRUE) to allow order functions to send.";
 
         /// <summary>
         /// Properties that never belong in a key/value table because they are transport
@@ -568,12 +568,12 @@ namespace OpenAlgo
 
         /// <summary>
         /// Places a single option order by strike offset instead of an exact strike.
-        /// Refuses to fire until trading has been armed with oa_trading_enabled(TRUE),
+        /// Refuses to fire while trading is switched off with oa_trading_enabled(FALSE),
         /// because Excel re-evaluates the formula on every recalculation.
         /// </summary>
         [ExcelFunction(
             Name = "oa_optionsorder",
-            Description = "Places an option order by strike offset (ATM, ITM1-ITM50, OTM1-OTM50). Requires oa_trading_enabled(TRUE).",
+            Description = "Places an option order by strike offset (ATM, ITM1-ITM50, OTM1-OTM50).",
             Category = OrdersCategory)]
         public static object oa_optionsorder(
             [ExcelArgument(Name = "Strategy", Description = "Strategy identifier recorded against the order")] string strategy,
@@ -664,11 +664,11 @@ namespace OpenAlgo
         /// The first row of the range names the columns; recognised names are Offset,
         /// Option Type, Action, Quantity, Expiry, PriceType, Product, SplitSize, Price and
         /// TriggerPrice. The result is one row per leg carrying that leg's order id or its
-        /// error. Refuses to fire until trading has been armed with oa_trading_enabled(TRUE).
+        /// error. Refuses to fire while trading is switched off with oa_trading_enabled(FALSE).
         /// </summary>
         [ExcelFunction(
             Name = "oa_optionsmultiorder",
-            Description = "Places a multi leg option strategy from a table of legs. Requires oa_trading_enabled(TRUE).",
+            Description = "Places a multi leg option strategy from a table of legs.",
             Category = OrdersCategory)]
         public static object oa_optionsmultiorder(
             [ExcelArgument(Name = "Strategy", Description = "Strategy identifier recorded against every leg")] string strategy,

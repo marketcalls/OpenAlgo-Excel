@@ -50,16 +50,15 @@ namespace OpenAlgo
         public static int RtdThrottleMs { get; set; } = 0;
 
         /// <summary>
-        /// When false, order placing functions refuse to fire. Recalculating a sheet
-        /// re-evaluates every order formula on it, so live trading has to be armed
-        /// deliberately through oa_trading_enabled().
+        /// Optional safety switch. Order placing functions work out of the box; setting
+        /// this to false through oa_trading_enabled(FALSE) makes them refuse to send.
         ///
-        /// This defaults to false and is deliberately not persisted. Opening a saved
-        /// workbook that already contains order formulas must never arm trading on the
-        /// user's behalf: a full rebuild (Ctrl+Alt+F9) would then re-place every order
-        /// on the sheet. Arming is a per session decision the user makes each time.
+        /// It exists because a worksheet formula re-evaluates whenever the sheet
+        /// recalculates, so an order formula in a cell can fire again on a full rebuild
+        /// (Ctrl+Alt+F9). Anyone who wants that guard can turn it on for a session; it
+        /// is off by default so nothing has to be armed before placing an order.
         /// </summary>
-        public static bool TradingEnabled { get; set; } = false;
+        public static bool TradingEnabled { get; set; } = true;
 
         private static readonly string ConfigFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

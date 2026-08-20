@@ -29,15 +29,15 @@ namespace OpenAlgo
         /// many orders the analyzer has logged.
         /// </summary>
         [ExcelFunction(
-            Name = "oa_analyzer",
+            Name = "oa_analyzerstatus",
             Description = "Analyzer status: whether orders are simulated in the sandbox or sent to the live broker, and how many orders the analyzer has logged. Check this before arming a strategy.",
             Category = AnalyzerCategory)]
-        public static object oa_analyzer()
+        public static object oa_analyzerstatus()
         {
             if (!OpenAlgoClient.HasApiKey)
                 return ExcelTable.Error("OpenAlgo API Key is not set. Use oa_api()");
 
-            return AsyncTaskUtil.RunTask(nameof(oa_analyzer), new object[] { }, async () =>
+            return AsyncTaskUtil.RunTask(nameof(oa_analyzerstatus), new object[] { }, async () =>
             {
                 var response = await OpenAlgoClient.PostAsync("analyzer", new JObject());
 
@@ -57,10 +57,10 @@ namespace OpenAlgo
         /// first.
         /// </summary>
         [ExcelFunction(
-            Name = "oa_analyzer_toggle",
+            Name = "oa_analyzertoggle",
             Description = "Switches between analyzer (sandbox) and live mode. WARNING: switching to live means every order function sends real orders to the broker. The returned table states the resulting mode in its first row.",
             Category = AnalyzerCategory)]
-        public static object oa_analyzer_toggle(
+        public static object oa_analyzertoggle(
             [ExcelArgument(Name = "Mode", Description = "TRUE or \"analyze\" routes orders to the sandbox. FALSE or \"live\" sends them to the real broker.")] object mode)
         {
             if (!OpenAlgoClient.HasApiKey)
@@ -69,7 +69,7 @@ namespace OpenAlgo
             if (!TryReadMode(mode, out bool analyze))
                 return ExcelTable.Error("Mode must be TRUE, FALSE, \"analyze\" or \"live\".");
 
-            return AsyncTaskUtil.RunTask(nameof(oa_analyzer_toggle), new object[] { analyze }, async () =>
+            return AsyncTaskUtil.RunTask(nameof(oa_analyzertoggle), new object[] { analyze }, async () =>
             {
                 var response = await OpenAlgoClient.PostAsync("analyzer/toggle", new JObject { ["mode"] = analyze });
 
@@ -90,7 +90,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_pnl_symbols",
-            Description = "Sandbox P&L per symbol with realised, unrealised and today totals. Analyzer mode only: in live mode the API answers HTTP 400 and this function says so. Switch with oa_analyzer_toggle(TRUE).",
+            Description = "Sandbox P&L per symbol with realised, unrealised and today totals. Analyzer mode only: in live mode the API answers HTTP 400 and this function says so. Switch with oa_analyzertoggle(TRUE).",
             Category = AnalyzerCategory)]
         public static object oa_pnl_symbols()
         {
@@ -107,7 +107,7 @@ namespace OpenAlgo
                     if (message.Contains("HTTP 400", StringComparison.OrdinalIgnoreCase))
                         return (object)ExcelTable.Error(
                             "Sandbox P&L is available only while analyzer mode is on. The server rejected the request because it is in live mode (" +
-                            message + "). Switch with oa_analyzer_toggle(TRUE).");
+                            message + "). Switch with oa_analyzertoggle(TRUE).");
                     return (object)ExcelTable.Error(message);
                 }
 
@@ -279,7 +279,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_isholiday",
-            Description = "TRUE when the market is closed on the date, covering weekends and holidays. Derived from /market/timings, since OpenAlgo has no /checkholiday endpoint. With an Exchange given, TRUE means that exchange has no session that day. Always open exchanges such as CRYPTO are ignored when no Exchange is given, otherwise every weekend would answer FALSE.",
+            Description = "TRUE when the market is closed on the date, covering weekends and holidays. Derived from /market/timings. With an Exchange given, TRUE means that exchange has no session that day. Always open exchanges such as CRYPTO are ignored when no Exchange is given.",
             Category = CalendarCategory)]
         public static object oa_isholiday(
             [ExcelArgument(Name = "Date", Description = "Date as a cell date or YYYY-MM-DD text.")] object date,
@@ -502,7 +502,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_trading_enabled",
-            Description = "Reads the trading arm switch, or sets it when passed TRUE or FALSE. Order functions refuse to send while it is FALSE, which stops a recalculation from re-placing orders. The setting lives for this Excel session only.",
+            Description = "Optional safety switch, on by default. Pass FALSE to make order functions refuse to send, which stops a recalculation from re-placing orders, and TRUE to allow them again. Omit the argument to read the current state. Session only.",
             Category = UtilityCategory)]
         public static object oa_trading_enabled(
             [ExcelArgument(Name = "Enable", Description = "TRUE arms order placing functions, FALSE disarms them. Omit to read the current state without changing it.")] object? enableOptional = null)
@@ -739,10 +739,10 @@ namespace OpenAlgo
         /// paired device itself, a linked OpenAlgo user, one phone number or up to five.
         /// </summary>
         [ExcelFunction(
-            Name = "oa_whatsapp_notify",
-            Description = "Sends a WhatsApp text, image or document to yourself, a linked username, one phone number or up to 5. This is the whole public WhatsApp REST surface: pairing, config, users, broadcast and stats are admin-only behind the web session. Attachments are read from the OpenAlgo server filesystem (never uploaded from Excel) and must sit inside WHATSAPP_ATTACHMENT_ROOTS. Limit 30 calls per minute.",
+            Name = "oa_whatsapp",
+            Description = "Sends a WhatsApp text, image or document to yourself, a linked username, one phone number or up to 5. Attachments are read from the OpenAlgo server filesystem, never uploaded from Excel, and must sit inside WHATSAPP_ATTACHMENT_ROOTS. Limit 30 per minute.",
             Category = MessagingCategory)]
-        public static object oa_whatsapp_notify(
+        public static object oa_whatsapp(
             [ExcelArgument(Name = "Message", Description = "Text body, max 4096 characters. May be blank when an Image Path or Document Path is given.")] object? message = null,
             [ExcelArgument(Name = "Recipient", Description = "Blank or \"self\" for the paired device. A linked OpenAlgo username, one E.164 phone number such as 919876543210, or a range or comma separated list of up to 5 numbers.")] object? recipientOptional = null,
             [ExcelArgument(Name = "Recipient Type", Description = "Forces the recipient form: self, username, phone or phones. Omit to infer it from Recipient. Exactly one form is sent; the API does not allow combining them.")] object? recipientTypeOptional = null,
@@ -788,7 +788,7 @@ namespace OpenAlgo
 
             string payloadJson = payload.ToString(Formatting.None);
 
-            return AsyncTaskUtil.RunTask(nameof(oa_whatsapp_notify), new object[] { payloadJson }, async () =>
+            return AsyncTaskUtil.RunTask(nameof(oa_whatsapp), new object[] { payloadJson }, async () =>
             {
                 var response = await OpenAlgoClient.PostAsync("whatsapp/notify", payload);
 
@@ -838,7 +838,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_telegram_config",
-            Description = "Telegram bot configuration, with the bot token masked by the server. POST /telegram/webhook is deliberately not wrapped: it is called inbound by Telegram's servers and authenticates with the X-Telegram-Bot-Api-Secret-Token header rather than an OpenAlgo key, so reach it with oa_request if you must. Limit 30 calls per minute.",
+            Description = "Telegram bot configuration, with the bot token masked by the server. /telegram/webhook is not wrapped: Telegram calls it inbound with its own secret-token header, so use oa_request if you need it. Limit 30 per minute.",
             Category = MessagingCategory)]
         public static object oa_telegram_config()
         {
@@ -1085,7 +1085,7 @@ namespace OpenAlgo
         /// </summary>
         [ExcelFunction(
             Name = "oa_telegram_broadcast",
-            Description = "Broadcasts a message to linked Telegram users. KNOWN LIMITATION: the server validates the request but its dispatch is not implemented yet, so it answers with zero delivered and zero failed. That zero is the server's behaviour, not an add-in fault. Broadcast must be enabled in the bot config and is limited to 5 calls per minute.",
+            Description = "Broadcasts a message to linked Telegram users. KNOWN LIMITATION: the server validates the request but does not dispatch yet, so it answers zero delivered and zero failed. That zero is server behaviour, not an add-in fault. Limit 5 per minute.",
             Category = MessagingCategory)]
         public static object oa_telegram_broadcast(
             [ExcelArgument(Name = "Message", Description = "Message text, max 4096 characters.")] object message,

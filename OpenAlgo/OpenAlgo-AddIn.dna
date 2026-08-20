@@ -1,0 +1,17 @@
+<DnaLibrary Name="OpenAlgo Add-In" RuntimeVersion="v8.0" RollForward="LatestMinor">
+  <!--
+    ExplicitExports="true" is load bearing.
+
+    With the default of false, Excel-DNA registers every public static method of
+    every public class as a worksheet function. That exported the add-in's internal
+    helpers into Excel's global namespace under names such as Apply, Read, Error,
+    Single, Rows, Cell, Date, Int, Str, Save and Load, and the overloaded ones
+    (Apply, Cell, KeyValue) collided with each other, producing
+    "Repeated function name: 'Apply' - previous registration will be overwritten"
+    in the add-in diagnostics.
+
+    With it set to true only methods carrying [ExcelFunction] or [ExcelCommand]
+    are registered, which is exactly the oa_* surface the add-in means to publish.
+  -->
+  <ExternalLibrary Path="OpenAlgo.dll" ExplicitExports="true" LoadFromBytes="true" Pack="true" IncludePdb="false" />
+</DnaLibrary>

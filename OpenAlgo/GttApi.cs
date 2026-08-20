@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -27,14 +27,14 @@ namespace OpenAlgo
     ///
     /// The three mutating functions are guarded. A worksheet function re-evaluates on
     /// every recalculation, so oa_placegttorder, oa_modifygttorder and oa_cancelgttorder
-    /// refuse to fire unless trading has been armed with oa_trading_enabled(TRUE). They
+    /// refuse to fire while trading is switched off with oa_trading_enabled(FALSE). They
     /// are also non volatile and pass every argument into the async call identity, so two
     /// different GTT formulas can never share one cached result.
     /// </summary>
     public static class GttApi
     {
         private const string TradingDisabledMessage =
-            "Trading is disabled. Call oa_trading_enabled(TRUE) to arm order functions.";
+            "Trading is switched off. Call oa_trading_enabled(TRUE) to allow order functions to send.";
 
         /// <summary>
         /// Places a GTT trigger, either SINGLE (one trigger, one order) or OCO

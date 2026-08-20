@@ -36,7 +36,7 @@ namespace OpenAlgo
             Arg.Str(value).Trim().ToUpperInvariant();
 
         private const string TradingDisabledMessage =
-            "Trading is disabled. Call oa_trading_enabled(TRUE) to arm order functions.";
+            "Trading is switched off. Call oa_trading_enabled(TRUE) to allow order functions to send.";
 
         private const string NoApiKeyMessage =
             "OpenAlgo API Key is not set. Use oa_api()";

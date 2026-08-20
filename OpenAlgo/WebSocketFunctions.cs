@@ -169,6 +169,61 @@ namespace OpenAlgo
         }
 
         /// <summary>
+        /// Subscribes to LTP (Last Traded Price) (Mode 1) market data. Mirrors the Python SDK's
+        /// subscribe_ltp so the two surfaces line up.
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_subscribe_ltp", Description = "Subscribe to LTP (Last Traded Price) data. Same as oa_ws_subscribe with Mode 1.")]
+        public static object oa_ws_subscribe_ltp(
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange)
+        {
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return "Error: Symbol and Exchange are required";
+
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_subscribe_ltp), new object[] { symbol, exchange }, async () =>
+            {
+                return await WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 1);
+            })!;
+        }
+
+        /// <summary>
+        /// Subscribes to Quote (Mode 2) market data. Mirrors the Python SDK's
+        /// subscribe_quote so the two surfaces line up.
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_subscribe_quote", Description = "Subscribe to Quote data. Same as oa_ws_subscribe with Mode 2.")]
+        public static object oa_ws_subscribe_quote(
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange)
+        {
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return "Error: Symbol and Exchange are required";
+
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_subscribe_quote), new object[] { symbol, exchange }, async () =>
+            {
+                return await WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 2);
+            })!;
+        }
+
+        /// <summary>
+        /// Subscribes to Depth (order book) (Mode 3) market data. Mirrors the Python SDK's
+        /// subscribe_depth so the two surfaces line up.
+        /// </summary>
+        [ExcelFunction(Name = "oa_ws_subscribe_depth", Description = "Subscribe to Depth (order book) data. Same as oa_ws_subscribe with Mode 3.")]
+        public static object oa_ws_subscribe_depth(
+            [ExcelArgument(Name = "Symbol", Description = "Trading symbol")] string symbol,
+            [ExcelArgument(Name = "Exchange", Description = "Exchange")] string exchange,
+            [ExcelArgument(Name = "Depth Level", Description = "Depth level, default 5")] object depthLevelOptional)
+        {
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(exchange))
+                return "Error: Symbol and Exchange are required";
+
+            return AsyncTaskUtil.RunTask(nameof(oa_ws_subscribe_depth), new object[] { symbol, exchange, Arg.Int(depthLevelOptional, 5) }, async () =>
+            {
+                return await WebSocketManager.Instance.SubscribeAsync(symbol, exchange, 3, Arg.IsMissing(depthLevelOptional) ? 5 : Arg.Int(depthLevelOptional, 5));
+            })!;
+        }
+
+        /// <summary>
         /// Unsubscribes from LTP (Mode 1) market data
         /// </summary>
         [ExcelFunction(Name = "oa_ws_unsubscribe_ltp", Description = "Unsubscribe from LTP (Last Traded Price) data")]
